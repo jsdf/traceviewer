@@ -99,10 +99,21 @@ export default class Trace extends React.Component<Props, State> {
   }
 
   componentDidMount() {
+    document.addEventListener('keypress', this._handleKey);
+    if (this.props.renderer == 'canvas') {
+      const canvas = this._canvas;
+      this._renderCanvas();
+    }
     window.onbeforeunload = () => {
       storeValue('center', this.state.center);
       storeValue('zoom', this.state.zoom);
     };
+  }
+
+  componentDidUpdate() {
+    if (this.props.renderer == 'canvas') {
+      this._renderCanvas();
+    }
   }
 
   _transformTrace = memoize(trace => transformTrace(trace));
@@ -168,6 +179,7 @@ export default class Trace extends React.Component<Props, State> {
   _dragStart = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     this.setState({dragging: true});
   };
+
   _dragMove = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     if (this.state.dragging) {
       const updated =
@@ -177,6 +189,7 @@ export default class Trace extends React.Component<Props, State> {
       });
     }
   };
+
   _dragEnd = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     this.setState({dragging: false});
   };
@@ -244,19 +257,6 @@ export default class Trace extends React.Component<Props, State> {
   };
 
   _handleScroll() {}
-
-  componentDidMount() {
-    document.addEventListener('keypress', this._handleKey);
-    if (this.props.renderer == 'canvas') {
-      const canvas = this._canvas;
-      this._renderCanvas();
-    }
-  }
-  componentDidUpdate() {
-    if (this.props.renderer == 'canvas') {
-      this._renderCanvas();
-    }
-  }
 
   _getMeasureColor: Measure => string = memoizeWeak(measure =>
     getRandomColor()
