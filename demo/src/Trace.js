@@ -160,13 +160,19 @@ export default class Trace extends React.Component<Props, State> {
   };
 
   _handleWheel = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
-    // todo: zoom centered on mouse
-    // const rect = event.currentTarget.getBoundingClientRect();
-    // const x = event.clientX - rect.left;
-    // const updatedCenter = this.state.center;
-    const updatedZoom = this.state.zoom * (1 + 0.01 * -event.deltaY);
+    // zoom centered on mouse
+    const rect = event.currentTarget.getBoundingClientRect();
+    const canvasMouseX = event.clientX - rect.left;
+    const mouseOffsetFromCenter = canvasMouseX - this.props.viewportWidth / 2;
+    const updatedZoom = this.state.zoom * (1 + 0.005 * -event.deltaY);
+    const updatedCenter =
+      this.state.center +
+      // offset to time space before zoom
+      mouseOffsetFromCenter / PX_PER_MS / this.state.zoom -
+      // offset to time space after zoom
+      mouseOffsetFromCenter / PX_PER_MS / updatedZoom;
     run(() => {
-      this.setState({zoom: updatedZoom});
+      this.setState({zoom: updatedZoom, center: updatedCenter});
     });
   };
 
