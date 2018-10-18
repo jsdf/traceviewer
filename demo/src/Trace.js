@@ -12,11 +12,16 @@ type Measure = {
   duration: number,
 };
 
-const BAR_HEIGHT = 20;
+const BAR_HEIGHT = 16;
+const BAR_Y_GUTTER = 1;
+const BAR_X_GUTTER = 1;
 const PX_PER_MS = 1;
 const DRAW_LIMIT = 500;
 const DRAW_MIN_PERCENT = 0.3;
 const DRAW_TEXT_MIN_PERCENT = 1;
+const DRAW_TEXT_MIN_PX = 30;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 100;
 
 function memoizeWeak<TArg, TRet>(fn: (arg: TArg) => TRet): (arg: TArg) => TRet {
   const cache = new WeakMap();
@@ -35,6 +40,12 @@ function getRandomColor(): string {
     color += letters[Math.floor(Math.random() * 16)];
   }
   return color;
+}
+
+function truncateText(text: string, endSize: number) {
+  return `${text.slice(0, endSize)}\u{2026}${text.slice(
+    text.length - 1 - endSize
+  )}`;
 }
 
 type Props = {
@@ -106,14 +117,14 @@ export default class Trace extends React.Component<Props, State> {
   _handleZoom = (event: SyntheticMouseEvent<HTMLInputElement>) => {
     const updated = parseFloat(event.currentTarget.value);
     run(() => {
-      this.setState({zoom: updated});
+      this.setState({zoom: this._clampZoom(updated)});
     });
   };
 
   _handleCenter = (event: SyntheticMouseEvent<HTMLInputElement>) => {
     const updated = parseFloat(event.currentTarget.value);
     run(() => {
-      this.setState({center: updated});
+      this.setState({center: this._clampCenter(updated)});
     });
   };
 
@@ -121,7 +132,7 @@ export default class Trace extends React.Component<Props, State> {
     const {size} = this._getExtents();
     const updated = this.state.center - size * 0.01 / this.state.zoom;
     run(() => {
-      this.setState({center: updated});
+      this.setState({center: this._clampCenter(updated)});
     });
   };
 
@@ -129,7 +140,7 @@ export default class Trace extends React.Component<Props, State> {
     const {size} = this._getExtents();
     const updated = this.state.center + size * 0.01 / this.state.zoom;
     run(() => {
-      this.setState({center: updated});
+      this.setState({center: this._clampCenter(updated)});
     });
   };
 
@@ -141,6 +152,15 @@ export default class Trace extends React.Component<Props, State> {
     });
   };
 
+  _clampCenter(updated: number) {
+    const {startOffset, endOffset} = this._getExtents();
+    return Math.max(startOffset, Math.min(endOffset, updated));
+  }
+
+  _clampZoom(updated: number) {
+    return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, updated));
+  }
+
   _dragging = false;
 
   _dragStart = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
@@ -151,7 +171,7 @@ export default class Trace extends React.Component<Props, State> {
       const updated =
         this.state.center - event.movementX / PX_PER_MS / this.state.zoom;
       run(() => {
-        this.setState({center: updated});
+        this.setState({center: this._clampCenter(updated)});
       });
     }
   };
@@ -160,6 +180,8 @@ export default class Trace extends React.Component<Props, State> {
   };
 
   _handleWheel = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
     // zoom centered on mouse
     const rect = event.currentTarget.getBoundingClientRect();
     const canvasMouseX = event.clientX - rect.left;
@@ -172,7 +194,10 @@ export default class Trace extends React.Component<Props, State> {
       // offset to time space after zoom
       mouseOffsetFromCenter / PX_PER_MS / updatedZoom;
     run(() => {
-      this.setState({zoom: updatedZoom, center: updatedCenter});
+      this.setState({
+        zoom: this._clampZoom(updatedZoom),
+        center: this._clampCenter(updatedCenter),
+      });
     });
   };
 
@@ -188,28 +213,28 @@ export default class Trace extends React.Component<Props, State> {
       case 'w': {
         const updated = this.state.zoom * 2;
         run(() => {
-          this.setState({zoom: updated});
+          this.setState({zoom: this._clampZoom(updated)});
         });
         break;
       }
       case 'a': {
         const updated = this.state.center - 0.05 * size / this.state.zoom;
         run(() => {
-          this.setState({center: updated});
+          this.setState({center: this._clampCenter(updated)});
         });
         break;
       }
       case 's': {
         const updated = this.state.zoom / 2;
         run(() => {
-          this.setState({zoom: updated});
+          this.setState({zoom: this._clampZoom(updated)});
         });
         break;
       }
       case 'd': {
         const updated = this.state.center + 0.05 * size / this.state.zoom;
         run(() => {
-          this.setState({center: updated});
+          this.setState({center: this._clampCenter(updated)});
         });
         break;
       }
@@ -257,12 +282,15 @@ export default class Trace extends React.Component<Props, State> {
   _getLayout(measure: RenderableMeasure<Measure>) {
     const centerOffset = this.state.center;
 
-    const width = measure.measure.duration * PX_PER_MS * this.state.zoom;
+    const width = Math.max(
+      measure.measure.duration * PX_PER_MS * this.state.zoom - BAR_X_GUTTER,
+      0
+    );
     const height = BAR_HEIGHT;
     const x =
       (measure.measure.startTime - centerOffset) * PX_PER_MS * this.state.zoom +
       this.props.viewportWidth / 2;
-    const y = measure.stackIndex * BAR_HEIGHT;
+    const y = measure.stackIndex * (BAR_HEIGHT + BAR_Y_GUTTER);
 
     return {
       width,
@@ -293,6 +321,30 @@ export default class Trace extends React.Component<Props, State> {
     return ctx;
   });
 
+  _fitText(ctx: CanvasRenderingContext2D, label: string, textWidth: number) {
+    // binary search for smallest
+    let labelTrimmed = label;
+    let l = 0;
+    let r = label.length - 1;
+    if (ctx.measureText(labelTrimmed).width > textWidth) {
+      while (l < r) {
+        let m = l + Math.floor((r - l) / 2);
+
+        labelTrimmed = truncateText(label, m);
+
+        if (ctx.measureText(labelTrimmed).width > textWidth) {
+          r = m - 1;
+        } else {
+          l = m + 1;
+        }
+      }
+
+      // this isn't quite right but close enough
+      labelTrimmed = truncateText(label, r);
+    }
+    return labelTrimmed;
+  }
+
   _renderCanvas() {
     const canvas = this._canvas;
     if (canvas instanceof HTMLCanvasElement) {
@@ -322,14 +374,26 @@ export default class Trace extends React.Component<Props, State> {
 
         // skip text rendering for small measures
         // text is by far the most expensive part of rendering the trace
-        if (width < this.props.viewportWidth * (DRAW_TEXT_MIN_PERCENT / 100)) {
+        if (width < DRAW_TEXT_MIN_PX) {
           continue;
         }
+
+        const textGutterPx = 2;
+
+        const textWidth = Math.max(width - textGutterPx, 0);
 
         ctx.font = '10px Lucida Grande';
         ctx.fillStyle = 'black';
 
-        ctx.fillText(measure.measure.name, x, y + BAR_HEIGHT / 2 + 4, width);
+        const label = measure.measure.name;
+
+        const labelTrimmed = this._fitText(ctx, label, textWidth);
+        ctx.fillText(
+          labelTrimmed,
+          x + textGutterPx,
+          y + BAR_HEIGHT / 2 + 4,
+          textWidth
+        );
       }
     }
   }
