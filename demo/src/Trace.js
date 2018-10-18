@@ -19,9 +19,11 @@ const PX_PER_MS = 1;
 const DRAW_LIMIT = 500;
 const DRAW_MIN_PERCENT = 0.3;
 const DRAW_TEXT_MIN_PERCENT = 1;
-const DRAW_TEXT_MIN_PX = 30;
+const DRAW_TEXT_MIN_PX = 35;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 100;
+
+const TEXT_GUTTER_PX = 2;
 
 function memoizeWeak<TArg, TRet>(fn: (arg: TArg) => TRet): (arg: TArg) => TRet {
   const cache = new WeakMap();
@@ -57,8 +59,9 @@ type Props = {
 
 type State = {
   center: number,
-  zoom: number,
+  dragging: boolean,
   selection: ?RenderableMeasure<Measure>,
+  zoom: number,
 };
 
 // const run = fn => requestAnimationFrame(fn);
@@ -85,6 +88,7 @@ export default class Trace extends React.Component<Props, State> {
     const {startOffset, size} = this._getExtents();
     const zoom = loadValue('zoom', 1);
     this.state = {
+      dragging: false,
       selection: null,
       center: loadValue(
         'center',
@@ -161,13 +165,11 @@ export default class Trace extends React.Component<Props, State> {
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, updated));
   }
 
-  _dragging = false;
-
   _dragStart = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
-    this._dragging = true;
+    this.setState({dragging: true});
   };
   _dragMove = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
-    if (this._dragging) {
+    if (this.state.dragging) {
       const updated =
         this.state.center - event.movementX / PX_PER_MS / this.state.zoom;
       run(() => {
@@ -176,7 +178,7 @@ export default class Trace extends React.Component<Props, State> {
     }
   };
   _dragEnd = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
-    this._dragging = false;
+    this.setState({dragging: false});
   };
 
   _handleWheel = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
@@ -356,10 +358,6 @@ export default class Trace extends React.Component<Props, State> {
         return;
       }
 
-      const extents = this._getExtents();
-
-      let drawn = 0;
-
       for (var index = 0; index < renderableTrace.length; index++) {
         const measure = renderableTrace[index];
 
@@ -378,19 +376,17 @@ export default class Trace extends React.Component<Props, State> {
           continue;
         }
 
-        const textGutterPx = 2;
-
-        const textWidth = Math.max(width - textGutterPx, 0);
+        const textWidth = Math.max(width - TEXT_GUTTER_PX, 0);
 
         ctx.font = '10px Lucida Grande';
         ctx.fillStyle = 'black';
 
         const label = measure.measure.name;
-
         const labelTrimmed = this._fitText(ctx, label, textWidth);
+
         ctx.fillText(
           labelTrimmed,
-          x + textGutterPx,
+          x + TEXT_GUTTER_PX,
           y + BAR_HEIGHT / 2 + 4,
           textWidth
         );
@@ -413,28 +409,30 @@ export default class Trace extends React.Component<Props, State> {
     const centerOffset = this.state.center;
     const rendered = (
       <div>
-        <label>Zoom</label>
-        <input
-          type="range"
-          value={this.state.zoom}
-          step="0.0001"
-          min="0"
-          max="20"
-          onChange={this._handleZoom}
-        />
-        <label>Center</label>
-        <input
-          type="range"
-          value={this.state.center}
-          step={String((endOffset - startOffset) * 0.0001)}
-          min={String(startOffset)}
-          max={String(endOffset)}
-          style={{width: 300}}
-          onChange={this._handleCenter}
-        />
-        <button onClick={this._handleLeft}>-</button>
-        <button onClick={this._handleRight}>+</button>
-        <div>
+        <div style={{height: 100}}>
+          <label>Zoom</label>
+          <input
+            type="range"
+            value={this.state.zoom}
+            step="0.0001"
+            min="0"
+            max="20"
+            onChange={this._handleZoom}
+          />
+          <label>Center</label>
+          <input
+            type="range"
+            value={this.state.center}
+            step={String((endOffset - startOffset) * 0.0001)}
+            min={String(startOffset)}
+            max={String(endOffset)}
+            style={{width: 300}}
+            onChange={this._handleCenter}
+          />
+          <button onClick={this._handleLeft}>-</button>
+          <button onClick={this._handleRight}>+</button>
+        </div>
+        <div style={{cursor: this.state.dragging ? 'grabbing' : 'grab'}}>
           {this.props.renderer == 'canvas' ? (
             <canvas
               ref={this._onCanvas}
@@ -509,7 +507,7 @@ export default class Trace extends React.Component<Props, State> {
             </div>
           )}
         </div>
-        <span>drawn={drawn}</span>
+        {this.props.renderer === 'dom' && <span>drawn={drawn}</span>}
         <pre>
           {this.state.selection
             ? JSON.stringify(this.state.selection.measure, null, 2)

@@ -7,16 +7,14 @@ class App extends Component {
   render() {
     return (
       <div className="App">
-        <AsyncMode>
-          <Trace
-            trace={tracedata}
-            viewportWidth={1200}
-            viewportHeight={500}
-            renderer={
-              window.location.search.slice(1) === 'dom' ? 'dom' : 'canvas'
-            }
-          />
-        </AsyncMode>
+        <Trace
+          trace={tracedata}
+          viewportWidth={1000}
+          viewportHeight={600}
+          renderer={
+            window.location.search.slice(1) === 'dom' ? 'dom' : 'canvas'
+          }
+        />
       </div>
     );
   }
