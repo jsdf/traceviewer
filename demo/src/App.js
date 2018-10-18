@@ -1,5 +1,4 @@
 import React, {Component, unstable_AsyncMode as AsyncMode} from 'react';
-import logo from './logo.svg';
 import './App.css';
 import tracedata from './exampledata';
 import Trace from './Trace';
