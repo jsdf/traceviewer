@@ -12,6 +12,16 @@ type Measure = {
   duration: number,
 };
 
+type Layout = {
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  inView: boolean,
+};
+
+type Color = [number, number, number];
+
 const BAR_HEIGHT = 16;
 const BAR_Y_GUTTER = 1;
 const BAR_X_GUTTER = 1;
@@ -22,8 +32,10 @@ const DRAW_TEXT_MIN_PERCENT = 1;
 const DRAW_TEXT_MIN_PX = 35;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 100;
+const TOOLTIP_OFFSET = 8;
+const TOOLTIP_HEIGHT = 20;
 
-const TEXT_GUTTER_PX = 2;
+const TEXT_PADDING_PX = 2;
 
 function memoizeWeak<TArg, TRet>(fn: (arg: TArg) => TRet): (arg: TArg) => TRet {
   const cache = new WeakMap();
@@ -35,13 +47,12 @@ function memoizeWeak<TArg, TRet>(fn: (arg: TArg) => TRet): (arg: TArg) => TRet {
   };
 }
 
-function getRandomColor(): string {
-  var letters = '0123456789ABCDEF';
-  var color = '#';
-  for (let i = 0; i < 6; i++) {
-    color += letters[Math.floor(Math.random() * 16)];
-  }
-  return color;
+function getRandomColor(): Color {
+  return [
+    Math.floor(Math.random() * 256),
+    Math.floor(Math.random() * 256),
+    Math.floor(Math.random() * 256),
+  ];
 }
 
 function truncateText(text: string, endSize: number) {
@@ -60,6 +71,8 @@ type Props = {
 type State = {
   center: number,
   dragging: boolean,
+  dragMoved: boolean,
+  hovered: ?RenderableMeasure<Measure>,
   selection: ?RenderableMeasure<Measure>,
   zoom: number,
 };
@@ -83,13 +96,20 @@ function storeValue(name: string, val: number) {
 }
 
 export default class Trace extends React.Component<Props, State> {
+  _canvas: ?Node = null;
+  _renderedShapes: Map<Layout, RenderableMeasure<Measure>> = new Map();
+  _mouseX = 0;
+  _mouseY = 0;
+
   constructor(props: Props) {
     super(props);
     const {startOffset, size} = this._getExtents();
     const zoom = loadValue('zoom', 1);
     this.state = {
       dragging: false,
+      dragMoved: false,
       selection: null,
+      hovered: null,
       center: loadValue(
         'center',
         startOffset + this.props.viewportWidth / PX_PER_MS / 2
@@ -176,30 +196,74 @@ export default class Trace extends React.Component<Props, State> {
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, updated));
   }
 
-  _dragStart = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
-    this.setState({dragging: true});
+  _getCanvasMousePos(event: SyntheticMouseEvent<HTMLCanvasElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const canvasMouseX = event.clientX - rect.left;
+    const canvasMouseY = event.clientY - rect.top;
+
+    return {canvasMouseX, canvasMouseY};
+  }
+
+  _getIntersectingMeasure(event: SyntheticMouseEvent<HTMLCanvasElement>) {
+    const {canvasMouseX, canvasMouseY} = this._getCanvasMousePos(event);
+    const intersecting = Array.from(this._renderedShapes.entries()).find(
+      ([{x, y, width, height}]) =>
+        !(
+          canvasMouseX < x ||
+          x + width < canvasMouseX ||
+          (canvasMouseY < y || y + height < canvasMouseY)
+        )
+    );
+    let selection = null;
+    if (intersecting) {
+      return intersecting[1];
+    }
+
+    return null;
+  }
+
+  _mouseDown = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    this.setState({dragging: true, dragMoved: false});
   };
 
-  _dragMove = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+  _mouseMove = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    const hovered = this._getIntersectingMeasure(event);
+    const {canvasMouseX, canvasMouseY} = this._getCanvasMousePos(event);
+    this._mouseX = canvasMouseX;
+    this._mouseY = canvasMouseY;
+
     if (this.state.dragging) {
       const updated =
         this.state.center - event.movementX / PX_PER_MS / this.state.zoom;
       run(() => {
-        this.setState({center: this._clampCenter(updated)});
+        this.setState({
+          center: this._clampCenter(updated),
+          hovered,
+          dragMoved: true,
+        });
+      });
+    } else {
+      run(() => {
+        this.setState({hovered});
       });
     }
   };
 
-  _dragEnd = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
-    this.setState({dragging: false});
+  _mouseUp = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    this.setState({
+      dragging: false,
+      dragMoved: false,
+      selection: !this.state.dragMoved
+        ? this._getIntersectingMeasure(event)
+        : this.state.selection,
+    });
   };
 
   _handleWheel = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     event.preventDefault();
     event.stopPropagation();
     // zoom centered on mouse
-    const rect = event.currentTarget.getBoundingClientRect();
-    const canvasMouseX = event.clientX - rect.left;
+    const {canvasMouseX} = this._getCanvasMousePos(event);
     const mouseOffsetFromCenter = canvasMouseX - this.props.viewportWidth / 2;
     const updatedZoom = this.state.zoom * (1 + 0.005 * -event.deltaY);
     const updatedCenter =
@@ -215,8 +279,6 @@ export default class Trace extends React.Component<Props, State> {
       });
     });
   };
-
-  _canvas: ?Node = null;
 
   _onCanvas = (node: ?Node) => {
     this._canvas = node;
@@ -258,9 +320,25 @@ export default class Trace extends React.Component<Props, State> {
 
   _handleScroll() {}
 
-  _getMeasureColor: Measure => string = memoizeWeak(measure =>
-    getRandomColor()
-  );
+  _getMeasureColor: Measure => Color = memoizeWeak(measure => getRandomColor());
+
+  _getMeasureColorRGBA(measure: Measure, opacity: number) {
+    const color = this._getMeasureColor(measure);
+    return `rgba(${color[0]},${color[1]},${color[2]},${opacity})`;
+  }
+
+  _getMeasureColorRGB: Measure => string = memoizeWeak(measure => {
+    const color = this._getMeasureColor(measure);
+    return `rgb(${color[0]},${color[1]},${color[2]})`;
+  });
+
+  _getMeasureHoverColorRGB: Measure => string = memoizeWeak(measure => {
+    const color = this._getMeasureColor(measure);
+    return `rgb(${Math.min(color[0] + 20, 255)},${Math.min(
+      color[1] + 20,
+      255
+    )},${Math.min(color[2] + 20, 255)})`;
+  });
 
   _getExtents() {
     const renderableTrace = this._transformTrace(this.props.trace);
@@ -352,6 +430,7 @@ export default class Trace extends React.Component<Props, State> {
     if (canvas instanceof HTMLCanvasElement) {
       var ctx = this._getCanvasContext(canvas);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      this._renderedShapes.clear();
 
       const renderableTrace = this._transformTrace(this.props.trace);
       if (renderableTrace[0] == null) {
@@ -361,13 +440,22 @@ export default class Trace extends React.Component<Props, State> {
       for (var index = 0; index < renderableTrace.length; index++) {
         const measure = renderableTrace[index];
 
-        const {width, height, x, y, inView} = this._getLayout(measure);
+        const layout = this._getLayout(measure);
+        const {width, height, x, y, inView} = layout;
 
         if (!inView) {
           continue;
         }
 
-        ctx.fillStyle = this._getMeasureColor(measure.measure);
+        this._renderedShapes.set(layout, measure);
+
+        const hovered = measure === this.state.hovered;
+        const selected = measure === this.state.selection;
+
+        ctx.fillStyle =
+          hovered || selected
+            ? this._getMeasureHoverColorRGB(measure.measure)
+            : this._getMeasureColorRGB(measure.measure);
         ctx.fillRect(x, y, width, height);
 
         // skip text rendering for small measures
@@ -376,7 +464,7 @@ export default class Trace extends React.Component<Props, State> {
           continue;
         }
 
-        const textWidth = Math.max(width - TEXT_GUTTER_PX, 0);
+        const textWidth = Math.max(width - TEXT_PADDING_PX, 0);
 
         ctx.font = '10px Lucida Grande';
         ctx.fillStyle = 'black';
@@ -386,8 +474,35 @@ export default class Trace extends React.Component<Props, State> {
 
         ctx.fillText(
           labelTrimmed,
-          x + TEXT_GUTTER_PX,
+          x + TEXT_PADDING_PX,
           y + BAR_HEIGHT / 2 + 4,
+          textWidth
+        );
+      }
+
+      if (this.state.selection) {
+        const layout = this._getLayout(this.state.selection);
+        const {width, height, x, y, inView} = layout;
+
+        ctx.strokeStyle = '#0000ff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, width, height);
+      }
+
+      if (this.state.hovered) {
+        const label = this.state.hovered.measure.name;
+        const textWidth = ctx.measureText(label).width;
+        const tooltipX = this._mouseX + TOOLTIP_OFFSET;
+        const tooltipY = this._mouseY + TOOLTIP_OFFSET;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(tooltipX, tooltipY, textWidth, TOOLTIP_HEIGHT);
+
+        ctx.font = '10px Lucida Grande';
+        ctx.fillStyle = 'black';
+        ctx.fillText(
+          label,
+          tooltipX + TEXT_PADDING_PX,
+          tooltipY + TOOLTIP_HEIGHT / 2 + 4,
           textWidth
         );
       }
@@ -409,7 +524,7 @@ export default class Trace extends React.Component<Props, State> {
     const centerOffset = this.state.center;
     const rendered = (
       <div>
-        <div style={{height: 100}}>
+        <div style={{height: 50}}>
           <label>Zoom</label>
           <input
             type="range"
@@ -432,14 +547,18 @@ export default class Trace extends React.Component<Props, State> {
           <button onClick={this._handleLeft}>-</button>
           <button onClick={this._handleRight}>+</button>
         </div>
-        <div style={{cursor: this.state.dragging ? 'grabbing' : 'grab'}}>
+        <div
+          style={{
+            cursor: this.state.dragging ? 'grabbing' : 'grab',
+          }}
+        >
           {this.props.renderer == 'canvas' ? (
             <canvas
               ref={this._onCanvas}
               onWheel={this._handleWheel}
-              onMouseDown={this._dragStart}
-              onMouseMove={this._dragMove}
-              onMouseUp={this._dragEnd}
+              onMouseDown={this._mouseDown}
+              onMouseMove={this._mouseMove}
+              onMouseUp={this._mouseUp}
               width={this.props.viewportWidth}
               height={this.props.viewportHeight}
             />
@@ -487,7 +606,9 @@ export default class Trace extends React.Component<Props, State> {
                         width,
                         height,
                         overflow: 'hidden',
-                        backgroundColor: this._getMeasureColor(measure.measure),
+                        backgroundColor: this._getMeasureColorRGB(
+                          measure.measure
+                        ),
                         // transform: `translate(${x}px, ${y}px) translateZ(0)`,
                         left: x,
                         top: y,
