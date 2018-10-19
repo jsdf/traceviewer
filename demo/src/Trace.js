@@ -30,7 +30,7 @@ const DRAW_LIMIT = 500;
 const DRAW_MIN_PERCENT = 0.3;
 const DRAW_TEXT_MIN_PERCENT = 1;
 const DRAW_TEXT_MIN_PX = 35;
-const MIN_ZOOM = 0.1;
+const MIN_ZOOM = 0.2; // TODO: determine from trace extents
 const MAX_ZOOM = 100;
 const TOOLTIP_OFFSET = 8;
 const TOOLTIP_HEIGHT = 20;
@@ -62,6 +62,7 @@ function truncateText(text: string, endSize: number) {
 }
 
 type Props = {
+  truncateLabels: boolean,
   trace: Array<Measure>,
   renderer: 'canvas' | 'dom',
   viewportWidth: number,
@@ -229,8 +230,22 @@ export default class Trace extends React.Component<Props, State> {
   _mouseMove = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     const hovered = this._getIntersectingMeasure(event);
     const {canvasMouseX, canvasMouseY} = this._getCanvasMousePos(event);
+
     this._mouseX = canvasMouseX;
     this._mouseY = canvasMouseY;
+
+    if (this._tooltip instanceof HTMLDivElement) {
+      const tooltipX = this._mouseX + TOOLTIP_OFFSET;
+      const tooltipY = this._mouseY + TOOLTIP_OFFSET;
+
+      this._tooltip.style.left = `${tooltipX}px`;
+      this._tooltip.style.top = `${tooltipY}px`;
+      if (hovered != null) {
+        this._tooltip.textContent = `${hovered.measure.duration.toFixed(1)}ms ${
+          hovered.measure.name
+        }`;
+      }
+    }
 
     if (this.state.dragging) {
       const updated =
@@ -243,9 +258,9 @@ export default class Trace extends React.Component<Props, State> {
         });
       });
     } else {
-      run(() => {
-        this.setState({hovered});
-      });
+      // run(() => {
+      //   this.setState({hovered});
+      // });
     }
   };
 
@@ -272,12 +287,15 @@ export default class Trace extends React.Component<Props, State> {
       mouseOffsetFromCenter / PX_PER_MS / this.state.zoom -
       // offset to time space after zoom
       mouseOffsetFromCenter / PX_PER_MS / updatedZoom;
-    run(() => {
-      this.setState({
-        zoom: this._clampZoom(updatedZoom),
-        center: this._clampCenter(updatedCenter),
+
+    if (this._clampZoom(updatedZoom) !== this.state.zoom) {
+      run(() => {
+        this.setState({
+          zoom: this._clampZoom(updatedZoom),
+          center: this._clampCenter(updatedCenter),
+        });
       });
-    });
+    }
   };
 
   _onCanvas = (node: ?Node) => {
@@ -425,6 +443,27 @@ export default class Trace extends React.Component<Props, State> {
     return labelTrimmed;
   }
 
+  _fitTextMap: WeakMap<
+    RenderableMeasure<Measure>,
+    {textWidth: number, labelTrimmed: string}
+  > = new WeakMap();
+
+  _fitTextCached(
+    measure: RenderableMeasure<Measure>,
+    ctx: CanvasRenderingContext2D,
+    label: string,
+    textWidth: number
+  ) {
+    const cached = this._fitTextMap.get(measure);
+    if (cached != null && cached.textWidth === textWidth) {
+      return cached.labelTrimmed;
+    }
+
+    const labelTrimmed = this._fitText(ctx, label, textWidth);
+    this._fitTextMap.set(measure, {textWidth, labelTrimmed});
+    return labelTrimmed;
+  }
+
   _renderCanvas() {
     const canvas = this._canvas;
     if (canvas instanceof HTMLCanvasElement) {
@@ -470,7 +509,9 @@ export default class Trace extends React.Component<Props, State> {
         ctx.fillStyle = 'black';
 
         const label = measure.measure.name;
-        const labelTrimmed = this._fitText(ctx, label, textWidth);
+        const labelTrimmed = this.props.truncateLabels
+          ? this._fitTextCached(measure, ctx, label, textWidth)
+          : label;
 
         ctx.fillText(
           labelTrimmed,
@@ -488,25 +529,38 @@ export default class Trace extends React.Component<Props, State> {
         ctx.lineWidth = 2;
         ctx.strokeRect(x, y, width, height);
       }
-
-      if (this.state.hovered) {
-        const label = this.state.hovered.measure.name;
-        const textWidth = ctx.measureText(label).width;
-        const tooltipX = this._mouseX + TOOLTIP_OFFSET;
-        const tooltipY = this._mouseY + TOOLTIP_OFFSET;
-        ctx.fillStyle = 'white';
-        ctx.fillRect(tooltipX, tooltipY, textWidth, TOOLTIP_HEIGHT);
-
-        ctx.font = '10px Lucida Grande';
-        ctx.fillStyle = 'black';
-        ctx.fillText(
-          label,
-          tooltipX + TEXT_PADDING_PX,
-          tooltipY + TOOLTIP_HEIGHT / 2 + 4,
-          textWidth
-        );
-      }
     }
+  }
+
+  _tooltip: ?Node = null;
+
+  _onTooltip = (node: ?Node) => {
+    this._tooltip = node;
+  };
+
+  _renderTooltip() {
+    const tooltipX = this._mouseX + TOOLTIP_OFFSET;
+    const tooltipY = this._mouseY + TOOLTIP_OFFSET;
+    return (
+      <div
+        ref={this._onTooltip}
+        style={{
+          userSelect: 'none',
+          position: 'absolute',
+          left: tooltipX,
+          top: tooltipY,
+          backgroundColor: 'white',
+          fontSize: 10,
+          fontFamily: ' Lucida Grande',
+          padding: '2px 4px',
+          boxShadow: '3px 3px 5px rgba(0,0,0,0.4)',
+        }}
+      >
+        {this.state.hovered
+          ? this.state.hovered.measure.name
+          : 'hi im a tooltip'}
+      </div>
+    );
   }
 
   render() {
@@ -550,6 +604,7 @@ export default class Trace extends React.Component<Props, State> {
         <div
           style={{
             cursor: this.state.dragging ? 'grabbing' : 'grab',
+            position: 'relative',
           }}
         >
           {this.props.renderer == 'canvas' ? (
@@ -627,7 +682,9 @@ export default class Trace extends React.Component<Props, State> {
               </div>
             </div>
           )}
+          {this._renderTooltip()}
         </div>
+
         {this.props.renderer === 'dom' && <span>drawn={drawn}</span>}
         <pre>
           {this.state.selection

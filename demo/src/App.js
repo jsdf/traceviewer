@@ -8,6 +8,7 @@ class App extends Component {
     return (
       <div className="App">
         <Trace
+          truncateLabels={true}
           trace={tracedata}
           viewportWidth={1000}
           viewportHeight={600}
