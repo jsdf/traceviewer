@@ -211,7 +211,12 @@ export default class Trace extends React.Component<Props, State> {
   }
 
   _getCanvasMousePos(event: MouseEventWithTarget) {
-    const rect = event.currentTarget.getBoundingClientRect();
+    // const rect = event.currentTarget.getBoundingClientRect();
+    const canvas = this._canvas;
+    const rect =
+      canvas instanceof HTMLCanvasElement
+        ? canvas.getBoundingClientRect()
+        : {left: 0, top: 0};
     const canvasMouseX = event.clientX - rect.left;
     const canvasMouseY = event.clientY - rect.top;
 
@@ -262,6 +267,9 @@ export default class Trace extends React.Component<Props, State> {
         tooltip.textContent = `${hovered.measure.duration.toFixed(1)}ms ${
           hovered.measure.name
         }`;
+        tooltip.hidden = false;
+      } else {
+        tooltip.hidden = true;
       }
     }
 
@@ -280,6 +288,14 @@ export default class Trace extends React.Component<Props, State> {
       // run(() => {
       //   this.setState({hovered});
       // });
+    }
+  };
+
+  _mouseOut = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    const tooltip = this._tooltip;
+
+    if (tooltip instanceof HTMLDivElement) {
+      tooltip.hidden = true;
     }
   };
 
@@ -575,9 +591,7 @@ export default class Trace extends React.Component<Props, State> {
           boxShadow: '3px 3px 5px rgba(0,0,0,0.4)',
         }}
       >
-        {this.state.hovered
-          ? this.state.hovered.measure.name
-          : 'hi im a tooltip'}
+        {this.state.hovered ? this.state.hovered.measure.name : ''}
       </div>
     );
   }
@@ -632,6 +646,7 @@ export default class Trace extends React.Component<Props, State> {
               onWheel={this._handleWheel}
               onMouseDown={this._mouseDown}
               onMouseMove={this._mouseMove}
+              onMouseOut={this._mouseOut}
               width={this.props.viewportWidth}
               height={this.props.viewportHeight}
             />
