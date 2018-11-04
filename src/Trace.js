@@ -1,6 +1,7 @@
 // @flow
 import React from 'react';
 import ReactDOM from 'react-dom';
+// $FlowFixMe
 import memoize from 'memoize-one';
 import Flatbush from 'flatbush';
 import transformTrace from './calculateTraceLayout';
@@ -18,6 +19,17 @@ type Layout = {
   x: number,
   y: number,
   inView: boolean,
+};
+
+type MouseEventWithTarget = {
+  currentTarget: {
+    getBoundingClientRect: () => {
+      left: number,
+      top: number,
+    },
+  },
+  clientX: number,
+  clientY: number,
 };
 
 type Color = [number, number, number];
@@ -121,6 +133,7 @@ export default class Trace extends React.Component<Props, State> {
 
   componentDidMount() {
     document.addEventListener('keypress', this._handleKey);
+    document.addEventListener('mouseup', this._mouseUp);
     if (this.props.renderer == 'canvas') {
       const canvas = this._canvas;
       this._renderCanvas();
@@ -197,7 +210,7 @@ export default class Trace extends React.Component<Props, State> {
     return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, updated));
   }
 
-  _getCanvasMousePos(event: SyntheticMouseEvent<HTMLCanvasElement>) {
+  _getCanvasMousePos(event: MouseEventWithTarget) {
     const rect = event.currentTarget.getBoundingClientRect();
     const canvasMouseX = event.clientX - rect.left;
     const canvasMouseY = event.clientY - rect.top;
@@ -205,8 +218,10 @@ export default class Trace extends React.Component<Props, State> {
     return {canvasMouseX, canvasMouseY};
   }
 
-  _getIntersectingMeasure(event: SyntheticMouseEvent<HTMLCanvasElement>) {
-    const {canvasMouseX, canvasMouseY} = this._getCanvasMousePos(event);
+  _getIntersectingMeasure(event: MouseEventWithTarget) {
+    const {canvasMouseX, canvasMouseY} = this._getCanvasMousePos(
+      (event: $FlowFixMe)
+    );
     const intersecting = Array.from(this._renderedShapes.entries()).find(
       ([{x, y, width, height}]) =>
         !(
@@ -228,20 +243,23 @@ export default class Trace extends React.Component<Props, State> {
   };
 
   _mouseMove = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
-    const hovered = this._getIntersectingMeasure(event);
-    const {canvasMouseX, canvasMouseY} = this._getCanvasMousePos(event);
+    const hovered = this._getIntersectingMeasure((event: $FlowFixMe));
+    const {canvasMouseX, canvasMouseY} = this._getCanvasMousePos(
+      (event: $FlowFixMe)
+    );
 
     this._mouseX = canvasMouseX;
     this._mouseY = canvasMouseY;
+    const tooltip = this._tooltip;
 
-    if (this._tooltip instanceof HTMLDivElement) {
+    if (tooltip instanceof HTMLDivElement) {
       const tooltipX = this._mouseX + TOOLTIP_OFFSET;
       const tooltipY = this._mouseY + TOOLTIP_OFFSET;
 
-      this._tooltip.style.left = `${tooltipX}px`;
-      this._tooltip.style.top = `${tooltipY}px`;
+      tooltip.style.left = `${tooltipX}px`;
+      tooltip.style.top = `${tooltipY}px`;
       if (hovered != null) {
-        this._tooltip.textContent = `${hovered.measure.duration.toFixed(1)}ms ${
+        tooltip.textContent = `${hovered.measure.duration.toFixed(1)}ms ${
           hovered.measure.name
         }`;
       }
@@ -249,7 +267,8 @@ export default class Trace extends React.Component<Props, State> {
 
     if (this.state.dragging) {
       const updated =
-        this.state.center - event.movementX / PX_PER_MS / this.state.zoom;
+        this.state.center -
+        (event: $FlowFixMe).movementX / PX_PER_MS / this.state.zoom;
       run(() => {
         this.setState({
           center: this._clampCenter(updated),
@@ -264,21 +283,21 @@ export default class Trace extends React.Component<Props, State> {
     }
   };
 
-  _mouseUp = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+  _mouseUp = (event: MouseEvent) => {
     this.setState({
       dragging: false,
       dragMoved: false,
       selection: !this.state.dragMoved
-        ? this._getIntersectingMeasure(event)
+        ? this._getIntersectingMeasure((event: $FlowFixMe))
         : this.state.selection,
     });
   };
 
-  _handleWheel = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+  _handleWheel = (event: SyntheticWheelEvent<HTMLCanvasElement>) => {
     event.preventDefault();
     event.stopPropagation();
     // zoom centered on mouse
-    const {canvasMouseX} = this._getCanvasMousePos(event);
+    const {canvasMouseX} = this._getCanvasMousePos((event: $FlowFixMe));
     const mouseOffsetFromCenter = canvasMouseX - this.props.viewportWidth / 2;
     const updatedZoom = this.state.zoom * (1 + 0.005 * -event.deltaY);
     const updatedCenter =
@@ -302,7 +321,7 @@ export default class Trace extends React.Component<Props, State> {
     this._canvas = node;
   };
 
-  _handleKey = (event: KeyboardEvent<>) => {
+  _handleKey = (event: KeyboardEvent) => {
     const {size} = this._getExtents();
     switch (event.key) {
       case 'w': {
@@ -613,7 +632,6 @@ export default class Trace extends React.Component<Props, State> {
               onWheel={this._handleWheel}
               onMouseDown={this._mouseDown}
               onMouseMove={this._mouseMove}
-              onMouseUp={this._mouseUp}
               width={this.props.viewportWidth}
               height={this.props.viewportHeight}
             />

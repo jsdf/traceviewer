@@ -1,9 +1,10 @@
-import React, {Component, unstable_AsyncMode as AsyncMode} from 'react';
+// @flow
+import React, {Component} from 'react';
 import './App.css';
 import tracedata from './exampledata';
 import Trace from './Trace';
 
-class App extends Component {
+class App extends Component<void> {
   render() {
     return (
       <div className="App">
