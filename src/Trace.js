@@ -371,8 +371,6 @@ export default class Trace extends React.Component<Props, State> {
     }
   };
 
-  _handleScroll() {}
-
   _getMeasureColor: Measure => Color = memoizeWeak(measure => getRandomColor());
 
   _getMeasureColorRGBA(measure: Measure, opacity: number) {
@@ -657,7 +655,6 @@ export default class Trace extends React.Component<Props, State> {
                 overflowX: 'scroll',
                 height: this.props.viewportHeight,
               }}
-              onScroll={this._handleScroll}
             >
               <div
                 style={{
