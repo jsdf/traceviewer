@@ -5,14 +5,17 @@
   "dependencies": {
     "flatbush": "^3.1.0",
     "memoize-one": "^4.0.2",
-    "react": "^16.5.2",
-    "react-dom": "^16.5.2",
-    "react-scripts": "1.1.5"
+    "react": "^16.6.0",
+    "react-dom": "^16.6.0"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test --env=jsdom",
-    "eject": "react-scripts eject"
+    "start": "parcel index.html"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.0.0-0",
+    "@babel/plugin-proposal-class-properties": "^7.1.0",
+    "@babel/preset-flow": "^7.0.0",
+    "@babel/preset-react": "^7.0.0",
+    "parcel-bundler": "^1.10.3"
   }
 }
