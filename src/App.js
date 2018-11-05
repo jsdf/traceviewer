@@ -10,11 +10,18 @@ class App extends Component<void> {
       <div className="App">
         <Trace
           truncateLabels={true}
-          trace={tracedata}
-          viewportWidth={1000}
+          trace={
+            window.location.search.slice(1).includes('single')
+              ? tracedata
+              : tracedata.map((m, i) => ({
+                  ...m,
+                  group: String(i % 3),
+                }))
+          }
+          viewportWidth={window.innerWidth}
           viewportHeight={600}
           renderer={
-            window.location.search.slice(1) === 'dom' ? 'dom' : 'canvas'
+            window.location.search.slice(1).includes('dom') ? 'dom' : 'canvas'
           }
         />
       </div>

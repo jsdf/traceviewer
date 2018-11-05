@@ -11,6 +11,7 @@ type Measure = {
   name: string,
   startTime: number,
   duration: number,
+  group?: string,
 };
 
 type Layout = {
@@ -31,6 +32,8 @@ type MouseEventWithTarget = {
   clientX: number,
   clientY: number,
 };
+
+type RenderableTrace = Array<RenderableMeasure<Measure>>;
 
 type Color = [number, number, number];
 
@@ -74,6 +77,7 @@ function truncateText(text: string, endSize: number) {
 }
 
 type Props = {
+  groupOrder?: Array<string>,
   truncateLabels: boolean,
   trace: Array<Measure>,
   renderer: 'canvas' | 'dom',
@@ -151,6 +155,21 @@ export default class Trace extends React.Component<Props, State> {
   }
 
   _transformTrace = memoize(trace => transformTrace(trace));
+
+  _transformTraceGroups = memoize(trace => {
+    const groupedTraces = trace.reduce((groupsTraces, item) => {
+      const group = item.group;
+      const groupTrace = groupsTraces.get(group) || [];
+      groupTrace.push(item);
+      groupsTraces.set(group, groupTrace);
+      return groupsTraces;
+    }, new Map());
+    const groupedRenderableTraces = new Map();
+    for (let [group, trace] of groupedTraces) {
+      groupedRenderableTraces.set(group, transformTrace(trace));
+    }
+    return groupedRenderableTraces;
+  });
 
   _getFlatbush = memoize(renderableTrace => {
     const index = new Flatbush(renderableTrace.length);
@@ -410,7 +429,7 @@ export default class Trace extends React.Component<Props, State> {
     return size * PX_PER_MS * this.state.zoom;
   }
 
-  _getLayout(measure: RenderableMeasure<Measure>) {
+  _getLayout(measure: RenderableMeasure<Measure>, startY: number) {
     const centerOffset = this.state.center;
 
     const width = Math.max(
@@ -421,7 +440,7 @@ export default class Trace extends React.Component<Props, State> {
     const x =
       (measure.measure.startTime - centerOffset) * PX_PER_MS * this.state.zoom +
       this.props.viewportWidth / 2;
-    const y = measure.stackIndex * (BAR_HEIGHT + BAR_Y_GUTTER);
+    const y = measure.stackIndex * (BAR_HEIGHT + BAR_Y_GUTTER) + startY;
 
     return {
       width,
@@ -497,6 +516,10 @@ export default class Trace extends React.Component<Props, State> {
     return labelTrimmed;
   }
 
+  _getMaxStackIndex: RenderableTrace => number = memoizeWeak(renderableTrace =>
+    renderableTrace.reduce((acc, item) => Math.max(item.stackIndex, acc), 0)
+  );
+
   _renderCanvas() {
     const canvas = this._canvas;
     if (canvas instanceof HTMLCanvasElement) {
@@ -504,64 +527,88 @@ export default class Trace extends React.Component<Props, State> {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       this._renderedShapes.clear();
 
-      const renderableTrace = this._transformTrace(this.props.trace);
-      if (renderableTrace[0] == null) {
-        return;
+      const renderableTraceGroups = this._transformTraceGroups(
+        this.props.trace
+      );
+      const groupOrder = this.props.groupOrder || renderableTraceGroups.keys();
+
+      let startY = 0;
+      for (const group of groupOrder) {
+        const groupTrace = renderableTraceGroups.get(group);
+        console.log('rendering', {group, startY});
+        this._renderCanvasGroup(groupTrace, ctx, startY);
+        const maxStackIndex = this._getMaxStackIndex(groupTrace);
+        startY += (maxStackIndex + 1) * (BAR_HEIGHT + BAR_Y_GUTTER);
+      }
+    }
+  }
+
+  _renderCanvasGroup(
+    renderableTrace: RenderableTrace,
+    ctx: CanvasRenderingContext2D,
+    startY: number
+  ) {
+    const first = renderableTrace[0];
+    if (first == null) {
+      return;
+    }
+
+    const currentGroup = first.measure.group;
+
+    for (var index = 0; index < renderableTrace.length; index++) {
+      const measure = renderableTrace[index];
+
+      const layout = this._getLayout(measure, startY);
+      const {width, height, x, y, inView} = layout;
+
+      if (!inView) {
+        continue;
       }
 
-      for (var index = 0; index < renderableTrace.length; index++) {
-        const measure = renderableTrace[index];
+      this._renderedShapes.set(layout, measure);
 
-        const layout = this._getLayout(measure);
-        const {width, height, x, y, inView} = layout;
+      const hovered = measure === this.state.hovered;
+      const selected = measure === this.state.selection;
 
-        if (!inView) {
-          continue;
-        }
+      ctx.fillStyle =
+        hovered || selected
+          ? this._getMeasureHoverColorRGB(measure.measure)
+          : this._getMeasureColorRGB(measure.measure);
+      ctx.fillRect(x, y, width, height);
 
-        this._renderedShapes.set(layout, measure);
-
-        const hovered = measure === this.state.hovered;
-        const selected = measure === this.state.selection;
-
-        ctx.fillStyle =
-          hovered || selected
-            ? this._getMeasureHoverColorRGB(measure.measure)
-            : this._getMeasureColorRGB(measure.measure);
-        ctx.fillRect(x, y, width, height);
-
-        // skip text rendering for small measures
-        // text is by far the most expensive part of rendering the trace
-        if (width < DRAW_TEXT_MIN_PX) {
-          continue;
-        }
-
-        const textWidth = Math.max(width - TEXT_PADDING_PX, 0);
-
-        ctx.font = '10px Lucida Grande';
-        ctx.fillStyle = 'black';
-
-        const label = measure.measure.name;
-        const labelTrimmed = this.props.truncateLabels
-          ? this._fitTextCached(measure, ctx, label, textWidth)
-          : label;
-
-        ctx.fillText(
-          labelTrimmed,
-          x + TEXT_PADDING_PX,
-          y + BAR_HEIGHT / 2 + 4,
-          textWidth
-        );
+      // skip text rendering for small measures
+      // text is by far the most expensive part of rendering the trace
+      if (width < DRAW_TEXT_MIN_PX) {
+        continue;
       }
 
-      if (this.state.selection) {
-        const layout = this._getLayout(this.state.selection);
-        const {width, height, x, y, inView} = layout;
+      const textWidth = Math.max(width - TEXT_PADDING_PX, 0);
 
-        ctx.strokeStyle = '#0000ff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x, y, width, height);
-      }
+      ctx.font = '10px Lucida Grande';
+      ctx.fillStyle = 'black';
+
+      const label = measure.measure.name;
+      const labelTrimmed = this.props.truncateLabels
+        ? this._fitTextCached(measure, ctx, label, textWidth)
+        : label;
+
+      ctx.fillText(
+        labelTrimmed,
+        x + TEXT_PADDING_PX,
+        y + BAR_HEIGHT / 2 + 4,
+        textWidth
+      );
+    }
+
+    // render selection highlight
+    const selection = this.state.selection;
+    if (selection != null && currentGroup === selection.measure.group) {
+      const layout = this._getLayout(selection, startY);
+      const {width, height, x, y, inView} = layout;
+
+      ctx.strokeStyle = '#0000ff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, width, height);
     }
   }
 
@@ -666,7 +713,8 @@ export default class Trace extends React.Component<Props, State> {
               >
                 {renderableTrace.map((measure, index) => {
                   const {width, height, x, y, inView} = this._getLayout(
-                    measure
+                    measure,
+                    0
                   );
                   if (!inView) {
                     return null;
