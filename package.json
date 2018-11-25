@@ -9,7 +9,9 @@
     "react-dom": "^16.6.0"
   },
   "scripts": {
-    "start": "parcel index.html"
+    "start": "parcel index.html",
+    "prod": "rm docs/*; parcel build index.html --out-dir docs/ --public-url /flamechart/",
+    "pages": "yarn prod; git add -A; git commit -m 'update website'; git push origin master"
   },
   "devDependencies": {
     "@babel/core": "^7.0.0-0",
