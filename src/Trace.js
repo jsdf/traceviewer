@@ -3,6 +3,7 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 // $FlowFixMe
 import memoize from 'memoize-one';
+import debounce from 'debounce';
 import Flatbush from 'flatbush';
 import transformTrace from './calculateTraceLayout';
 import type {RenderableMeasure} from './calculateTraceLayout';
@@ -41,16 +42,23 @@ const BAR_HEIGHT = 16;
 const BAR_Y_GUTTER = 1;
 const BAR_X_GUTTER = 1;
 const PX_PER_MS = 1;
-const DRAW_LIMIT = 500;
-const DRAW_MIN_PERCENT = 0.3;
-const DRAW_TEXT_MIN_PERCENT = 1;
-const DRAW_TEXT_MIN_PX = 35;
 const MIN_ZOOM = 0.2; // TODO: determine from trace extents
 const MAX_ZOOM = 100;
 const TOOLTIP_OFFSET = 8;
 const TOOLTIP_HEIGHT = 20;
+const SHOW_CONTROLS = false;
+const DOM_DRAW_LIMIT = 500;
+const DOM_DRAW_MIN_PERCENT = 0.3;
+const CANVAS_DRAW_TEXT_MIN_PX = 35;
+const CANVAS_CSS_ZOOM = false;
+const CANVAS_USE_FLOAT_DIMENSIONS = false;
+const CANVAS_OPAQUE = true;
+const CANVAS_SUPPORT_RETINA = true;
+const CANVAS_ZOOMING_TEXT_OPT = false;
 
 const TEXT_PADDING_PX = 2;
+
+const toInt = CANVAS_USE_FLOAT_DIMENSIONS ? x => x : Math.floor;
 
 function memoizeWeak<TArg, TRet>(fn: (arg: TArg) => TRet): (arg: TArg) => TRet {
   const cache = new WeakMap();
@@ -92,10 +100,14 @@ type State = {
   hovered: ?RenderableMeasure<Measure>,
   selection: ?RenderableMeasure<Measure>,
   zoom: number,
+  zooming: boolean,
 };
 
 // const run = fn => requestAnimationFrame(fn);
 const run = fn => fn();
+
+let framecounter = 0;
+let frameSecond = Math.floor(performance.now() / 1000);
 
 function loadValue(name: string, defaultVal: number) {
   const item = localStorage.getItem(name);
@@ -115,6 +127,8 @@ function storeValue(name: string, val: number) {
 export default class Trace extends React.Component<Props, State> {
   _canvas: ?Node = null;
   _renderedShapes: Map<Layout, RenderableMeasure<Measure>> = new Map();
+  _renderedZoom: number = 1;
+  _renderedCenter: number = 1;
   _mouseX = 0;
   _mouseY = 0;
 
@@ -132,6 +146,7 @@ export default class Trace extends React.Component<Props, State> {
         startOffset + this.props.viewportWidth / PX_PER_MS / 2
       ),
       zoom,
+      zooming: false,
     };
   }
 
@@ -140,7 +155,7 @@ export default class Trace extends React.Component<Props, State> {
     document.addEventListener('mouseup', this._mouseUp);
     if (this.props.renderer == 'canvas') {
       const canvas = this._canvas;
-      this._renderCanvas();
+      this._renderCanvasReq();
     }
     window.onbeforeunload = () => {
       storeValue('center', this.state.center);
@@ -150,7 +165,7 @@ export default class Trace extends React.Component<Props, State> {
 
   componentDidUpdate() {
     if (this.props.renderer == 'canvas') {
-      this._renderCanvas();
+      this._renderCanvasReq();
     }
   }
 
@@ -328,6 +343,12 @@ export default class Trace extends React.Component<Props, State> {
     });
   };
 
+  _endWheel = debounce(() => {
+    this.setState({
+      zooming: false,
+    });
+  }, 100);
+
   _handleWheel = (event: SyntheticWheelEvent<HTMLCanvasElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -345,9 +366,11 @@ export default class Trace extends React.Component<Props, State> {
     if (this._clampZoom(updatedZoom) !== this.state.zoom) {
       run(() => {
         this.setState({
+          zooming: true,
           zoom: this._clampZoom(updatedZoom),
           center: this._clampCenter(updatedCenter),
         });
+        this._endWheel();
       });
     }
   };
@@ -452,22 +475,24 @@ export default class Trace extends React.Component<Props, State> {
   }
 
   _getCanvasContext = memoize((canvas: HTMLCanvasElement) => {
-    // hidpi canvas: https://www.html5rocks.com/en/tutorials/canvas/hidpi/
+    var ctx = canvas.getContext('2d', CANVAS_OPAQUE ? {alpha: false} : {});
+    if (CANVAS_SUPPORT_RETINA) {
+      // hidpi canvas: https://www.html5rocks.com/en/tutorials/canvas/hidpi/
 
-    // Get the device pixel ratio, falling back to 1.
-    var dpr = window.devicePixelRatio || 1;
-    // Get the size of the canvas in CSS pixels.
-    var rect = canvas.getBoundingClientRect();
-    // Give the canvas pixel dimensions of their CSS
-    // size * the device pixel ratio.
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    canvas.style.width = `${rect.width}px`;
-    canvas.style.height = `${rect.height}px`;
-    var ctx = canvas.getContext('2d');
-    // Scale all drawing operations by the dpr, so you
-    // don't have to worry about the difference.
-    ctx.scale(dpr, dpr);
+      // Get the device pixel ratio, falling back to 1.
+      var dpr = window.devicePixelRatio || 1;
+      // Get the size of the canvas in CSS pixels.
+      var rect = canvas.getBoundingClientRect();
+      // Give the canvas pixel dimensions of their CSS
+      // size * the device pixel ratio.
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+      // Scale all drawing operations by the dpr, so you
+      // don't have to worry about the difference.
+      ctx.scale(dpr, dpr);
+    }
     return ctx;
   });
 
@@ -520,27 +545,89 @@ export default class Trace extends React.Component<Props, State> {
     renderableTrace.reduce((acc, item) => Math.max(item.stackIndex, acc), 0)
   );
 
+  _renderCanvasReq = (() => {
+    let rafID = null;
+    let lastTime = performance.now();
+
+    return () => {
+      if (rafID == null) {
+        rafID = requestAnimationFrame(() => {
+          const curSecond = Math.floor(performance.now() / 1000);
+          if (curSecond !== frameSecond) {
+            console.log(framecounter, 'fps');
+            framecounter = 0;
+            frameSecond = curSecond;
+          } else {
+            framecounter++;
+          }
+
+          const nowTime = performance.now();
+          console.log(
+            'inter frame time',
+            (nowTime - lastTime).toFixed(1),
+            'ms'
+          );
+          lastTime = nowTime;
+
+          this._renderCanvas();
+          rafID = null;
+        });
+      } else {
+        console.log('skipping frame');
+      }
+    };
+  })();
+
   _renderCanvas() {
+    const start = performance.now();
+    performance.mark('_renderCanvas');
     const canvas = this._canvas;
     if (canvas instanceof HTMLCanvasElement) {
-      var ctx = this._getCanvasContext(canvas);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      this._renderedShapes.clear();
+      if (this.state.zooming && CANVAS_CSS_ZOOM) {
+        // not finished...
+        const zoomRatio = this.state.zoom / this._renderedZoom;
+        // const offset =
+        //   this.state.center -
+        //   (event: $FlowFixMe).movementX / PX_PER_MS / this.state.zoom;
+        canvas.style.transform = `scale(${zoomRatio})`;
+      } else {
+        const ctx = this._getCanvasContext(canvas);
 
-      const renderableTraceGroups = this._transformTraceGroups(
-        this.props.trace
-      );
-      const groupOrder = this.props.groupOrder || renderableTraceGroups.keys();
+        if (CANVAS_OPAQUE) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
 
-      let startY = 0;
-      for (const group of groupOrder) {
-        const groupTrace = renderableTraceGroups.get(group);
-        console.log('rendering', {group, startY});
-        this._renderCanvasGroup(groupTrace, ctx, startY);
-        const maxStackIndex = this._getMaxStackIndex(groupTrace);
-        startY += (maxStackIndex + 1) * (BAR_HEIGHT + BAR_Y_GUTTER);
+        this._renderedShapes.clear();
+
+        const renderableTraceGroups = this._transformTraceGroups(
+          this.props.trace
+        );
+        const groupOrder =
+          this.props.groupOrder || renderableTraceGroups.keys();
+
+        let startY = 0;
+        for (const group of groupOrder) {
+          const groupTrace = renderableTraceGroups.get(group);
+          performance.mark('_renderCanvasGroup ' + group);
+          this._renderCanvasGroup(groupTrace, ctx, startY);
+          performance.measure(
+            '_renderCanvasGroup ' + group,
+            '_renderCanvasGroup ' + group
+          );
+          const maxStackIndex = this._getMaxStackIndex(groupTrace);
+          startY += (maxStackIndex + 1) * (BAR_HEIGHT + BAR_Y_GUTTER);
+        }
+        this._renderedZoom = this.state.zoom;
+        this._renderedCenter = this.state.center;
+        canvas.style.transform = '';
       }
     }
+
+    performance.measure('_renderCanvas', '_renderCanvas');
+    console.log('render took', (performance.now() - start).toFixed(1), 'ms');
   }
 
   _renderCanvasGroup(
@@ -574,15 +661,20 @@ export default class Trace extends React.Component<Props, State> {
         hovered || selected
           ? this._getMeasureHoverColorRGB(measure.measure)
           : this._getMeasureColorRGB(measure.measure);
-      ctx.fillRect(x, y, width, height);
+      ctx.fillRect(toInt(x), toInt(y), toInt(width), toInt(height));
 
       // skip text rendering for small measures
       // text is by far the most expensive part of rendering the trace
-      if (width < DRAW_TEXT_MIN_PX) {
+      if (width < CANVAS_DRAW_TEXT_MIN_PX) {
         continue;
       }
 
-      const textWidth = Math.max(width - TEXT_PADDING_PX, 0);
+      // skip text rendering while zooming
+      if (CANVAS_ZOOMING_TEXT_OPT && this.state.zooming) {
+        continue;
+      }
+
+      const textWidth = toInt(Math.max(width - TEXT_PADDING_PX, 0));
 
       ctx.font = '10px Lucida Grande';
       ctx.fillStyle = 'black';
@@ -594,8 +686,8 @@ export default class Trace extends React.Component<Props, State> {
 
       ctx.fillText(
         labelTrimmed,
-        x + TEXT_PADDING_PX,
-        y + BAR_HEIGHT / 2 + 4,
+        toInt(x + TEXT_PADDING_PX),
+        toInt(y + BAR_HEIGHT / 2 + 4),
         textWidth
       );
     }
@@ -656,29 +748,31 @@ export default class Trace extends React.Component<Props, State> {
     const centerOffset = this.state.center;
     const rendered = (
       <div>
-        <div style={{height: 50}}>
-          <label>Zoom</label>
-          <input
-            type="range"
-            value={this.state.zoom}
-            step="0.0001"
-            min="0"
-            max="20"
-            onChange={this._handleZoom}
-          />
-          <label>Center</label>
-          <input
-            type="range"
-            value={this.state.center}
-            step={String((endOffset - startOffset) * 0.0001)}
-            min={String(startOffset)}
-            max={String(endOffset)}
-            style={{width: 300}}
-            onChange={this._handleCenter}
-          />
-          <button onClick={this._handleLeft}>-</button>
-          <button onClick={this._handleRight}>+</button>
-        </div>
+        {SHOW_CONTROLS && (
+          <div style={{height: 50}}>
+            <label>Zoom</label>
+            <input
+              type="range"
+              value={this.state.zoom}
+              step="0.0001"
+              min="0"
+              max="20"
+              onChange={this._handleZoom}
+            />
+            <label>Center</label>
+            <input
+              type="range"
+              value={this.state.center}
+              step={String((endOffset - startOffset) * 0.0001)}
+              min={String(startOffset)}
+              max={String(endOffset)}
+              style={{width: 300}}
+              onChange={this._handleCenter}
+            />
+            <button onClick={this._handleLeft}>-</button>
+            <button onClick={this._handleRight}>+</button>
+          </div>
+        )}
         <div
           style={{
             cursor: this.state.dragging ? 'grabbing' : 'grab',
@@ -687,6 +781,7 @@ export default class Trace extends React.Component<Props, State> {
         >
           {this.props.renderer == 'canvas' ? (
             <canvas
+              style={{willChange: 'transform'}}
               ref={this._onCanvas}
               onWheel={this._handleWheel}
               onMouseDown={this._mouseDown}
@@ -721,12 +816,12 @@ export default class Trace extends React.Component<Props, State> {
                   }
                   if (
                     width <
-                    this.props.viewportWidth * (DRAW_MIN_PERCENT / 100)
+                    this.props.viewportWidth * (DOM_DRAW_MIN_PERCENT / 100)
                   ) {
                     return null;
                   }
                   drawn++;
-                  if (drawn > DRAW_LIMIT) {
+                  if (drawn > DOM_DRAW_LIMIT) {
                     return null;
                   }
                   return (

@@ -4,6 +4,10 @@ import './App.css';
 import tracedata from './exampledata';
 import Trace from './Trace';
 
+const FIXED = true;
+const HEIGHT = FIXED ? 600 : window.innerHeight - 100;
+const WIDTH = window.innerWidth;
+
 class App extends Component<void> {
   render() {
     return (
@@ -18,8 +22,8 @@ class App extends Component<void> {
                   group: String(i % 3),
                 }))
           }
-          viewportWidth={window.innerWidth}
-          viewportHeight={600}
+          viewportWidth={WIDTH}
+          viewportHeight={HEIGHT}
           renderer={
             window.location.search.slice(1).includes('dom') ? 'dom' : 'canvas'
           }
