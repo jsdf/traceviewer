@@ -7,6 +7,7 @@ import debounce from 'debounce';
 import Flatbush from 'flatbush';
 import transformTrace from './calculateTraceLayout';
 import type {RenderableMeasure} from './calculateTraceLayout';
+import Controls from './Controls';
 
 type Measure = {
   name: string,
@@ -196,36 +197,6 @@ export default class Trace extends React.Component<Props, State> {
 
     return index;
   });
-
-  _handleZoom = (event: SyntheticMouseEvent<HTMLInputElement>) => {
-    const updated = parseFloat(event.currentTarget.value);
-    run(() => {
-      this.setState({zoom: this._clampZoom(updated)});
-    });
-  };
-
-  _handleCenter = (event: SyntheticMouseEvent<HTMLInputElement>) => {
-    const updated = parseFloat(event.currentTarget.value);
-    run(() => {
-      this.setState({center: this._clampCenter(updated)});
-    });
-  };
-
-  _handleLeft = (event: SyntheticMouseEvent<HTMLInputElement>) => {
-    const {size} = this._getExtents();
-    const updated = this.state.center - size * 0.01 / this.state.zoom;
-    run(() => {
-      this.setState({center: this._clampCenter(updated)});
-    });
-  };
-
-  _handleRight = (event: SyntheticMouseEvent<HTMLInputElement>) => {
-    const {size} = this._getExtents();
-    const updated = this.state.center + size * 0.01 / this.state.zoom;
-    run(() => {
-      this.setState({center: this._clampCenter(updated)});
-    });
-  };
 
   _handleMeasureClick = (event: SyntheticMouseEvent<HTMLDivElement>) => {
     this.setState({
@@ -733,6 +704,19 @@ export default class Trace extends React.Component<Props, State> {
     );
   }
 
+  _handleStateChange = (changes: {zoom?: number, center?: number}) => {
+    this.setState(prevState => {
+      return {
+        zoom:
+          changes.zoom != null ? this._clampZoom(changes.zoom) : prevState.zoom,
+        center:
+          changes.center != null
+            ? this._clampCenter(changes.center)
+            : prevState.center,
+      };
+    });
+  };
+
   render() {
     const renderableTrace = this._transformTrace(this.props.trace);
     if (renderableTrace[0] == null) {
@@ -749,29 +733,12 @@ export default class Trace extends React.Component<Props, State> {
     const rendered = (
       <div>
         {SHOW_CONTROLS && (
-          <div style={{height: 50}}>
-            <label>Zoom</label>
-            <input
-              type="range"
-              value={this.state.zoom}
-              step="0.0001"
-              min="0"
-              max="20"
-              onChange={this._handleZoom}
-            />
-            <label>Center</label>
-            <input
-              type="range"
-              value={this.state.center}
-              step={String((endOffset - startOffset) * 0.0001)}
-              min={String(startOffset)}
-              max={String(endOffset)}
-              style={{width: 300}}
-              onChange={this._handleCenter}
-            />
-            <button onClick={this._handleLeft}>-</button>
-            <button onClick={this._handleRight}>+</button>
-          </div>
+          <Controls
+            zoom={this.state.zoom}
+            center={this.state.center}
+            extents={this._getExtents()}
+            onChange={this._handleStateChange}
+          />
         )}
         <div
           style={{
