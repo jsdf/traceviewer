@@ -1817,16 +1817,6 @@ fill-range@^4.0.0:
     repeat-string "^1.6.1"
     to-regex-range "^2.1.0"
 
-flatbush@^3.1.0:
-  version "3.1.0"
-  resolved "https://registry.yarnpkg.com/flatbush/-/flatbush-3.1.0.tgz#ccd6957685a7db95d2fc27f5d4f24b7131d46553"
-  dependencies:
-    flatqueue "^1.1.0"
-
-flatqueue@^1.1.0:
-  version "1.1.0"
-  resolved "https://registry.yarnpkg.com/flatqueue/-/flatqueue-1.1.0.tgz#bc03140d40940c4cb799d18d45eaced176c3ef2d"
-
 flatten@^1.0.2:
   version "1.0.2"
   resolved "https://registry.yarnpkg.com/flatten/-/flatten-1.0.2.tgz#dae46a9d78fbe25292258cc1e780a41d95c03782"

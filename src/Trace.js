@@ -4,7 +4,6 @@ import ReactDOM from 'react-dom';
 // $FlowFixMe
 import memoize from 'memoize-one';
 import debounce from 'debounce';
-import Flatbush from 'flatbush';
 import transformTrace from './calculateTraceLayout';
 import type {RenderableMeasure} from './calculateTraceLayout';
 import Controls from './Controls';
@@ -185,17 +184,6 @@ export default class Trace extends React.Component<Props, State> {
       groupedRenderableTraces.set(group, transformTrace(trace));
     }
     return groupedRenderableTraces;
-  });
-
-  _getFlatbush = memoize(renderableTrace => {
-    const index = new Flatbush(renderableTrace.length);
-    for (const p of renderableTrace) {
-      index.add(p.startTime, 0, p.startTime + p.duration, 1);
-    }
-    // perform the indexing
-    index.finish();
-
-    return index;
   });
 
   _handleMeasureClick = (event: SyntheticMouseEvent<HTMLDivElement>) => {
