@@ -6,22 +6,13 @@ import memoize from 'memoize-one';
 import debounce from 'debounce';
 import transformTrace from './calculateTraceLayout';
 import type {RenderableMeasure} from './calculateTraceLayout';
+import type {Measure, Layout, RenderableTrace} from './renderUtils';
+import {UtilsWithCache} from './renderUtils';
 import Controls from './Controls';
+import DOMRenderer from './DOMRenderer';
+import memoizeWeak from './memoizeWeak';
 
-type Measure = {
-  name: string,
-  startTime: number,
-  duration: number,
-  group?: string,
-};
-
-type Layout = {
-  width: number,
-  height: number,
-  x: number,
-  y: number,
-  inView: boolean,
-};
+import {PX_PER_MS, BAR_HEIGHT, BAR_Y_GUTTER, BAR_X_GUTTER} from './constants';
 
 type MouseEventWithTarget = {
   currentTarget: {
@@ -34,21 +25,11 @@ type MouseEventWithTarget = {
   clientY: number,
 };
 
-type RenderableTrace = Array<RenderableMeasure<Measure>>;
-
-type Color = [number, number, number];
-
-const BAR_HEIGHT = 16;
-const BAR_Y_GUTTER = 1;
-const BAR_X_GUTTER = 1;
-const PX_PER_MS = 1;
 const MIN_ZOOM = 0.2; // TODO: determine from trace extents
 const MAX_ZOOM = 100;
 const TOOLTIP_OFFSET = 8;
 const TOOLTIP_HEIGHT = 20;
 const SHOW_CONTROLS = false;
-const DOM_DRAW_LIMIT = 500;
-const DOM_DRAW_MIN_PERCENT = 0.3;
 const CANVAS_DRAW_TEXT_MIN_PX = 35;
 const CANVAS_CSS_ZOOM = false;
 const CANVAS_USE_FLOAT_DIMENSIONS = false;
@@ -58,24 +39,6 @@ const CANVAS_ZOOMING_TEXT_OPT = false;
 const CANVAS_TEXT_PADDING_PX = 2;
 
 const toInt = CANVAS_USE_FLOAT_DIMENSIONS ? x => x : Math.floor;
-
-function memoizeWeak<TArg, TRet>(fn: (arg: TArg) => TRet): (arg: TArg) => TRet {
-  const cache = new WeakMap();
-  return (arg: TArg) => {
-    if (!cache.has(arg)) {
-      cache.set(arg, fn(arg));
-    }
-    return cache.get(arg) || fn(arg);
-  };
-}
-
-function getRandomColor(): Color {
-  return [
-    Math.floor(Math.random() * 256),
-    Math.floor(Math.random() * 256),
-    Math.floor(Math.random() * 256),
-  ];
-}
 
 function truncateText(text: string, endSize: number) {
   return `${text.slice(0, endSize)}\u{2026}${text.slice(
@@ -131,6 +94,8 @@ export default class Trace extends React.Component<Props, State> {
   _mouseX = 0;
   _mouseY = 0;
 
+  _utils = new UtilsWithCache();
+
   constructor(props: Props) {
     super(props);
     const {startOffset, size} = this._getExtents();
@@ -185,12 +150,8 @@ export default class Trace extends React.Component<Props, State> {
     return groupedRenderableTraces;
   });
 
-  _handleMeasureClick = (event: SyntheticMouseEvent<HTMLDivElement>) => {
-    this.setState({
-      selection: this._transformTrace(this.props.trace)[
-        parseInt(event.currentTarget.getAttribute('data-index'))
-      ],
-    });
+  _handleSelectionChange = (selection: ?RenderableMeasure<Measure>) => {
+    this.setState({selection});
   };
 
   _clampCenter(updated: number) {
@@ -371,26 +332,6 @@ export default class Trace extends React.Component<Props, State> {
     }
   };
 
-  _getMeasureColor: Measure => Color = memoizeWeak(measure => getRandomColor());
-
-  _getMeasureColorRGBA(measure: Measure, opacity: number) {
-    const color = this._getMeasureColor(measure);
-    return `rgba(${color[0]},${color[1]},${color[2]},${opacity})`;
-  }
-
-  _getMeasureColorRGB: Measure => string = memoizeWeak(measure => {
-    const color = this._getMeasureColor(measure);
-    return `rgb(${color[0]},${color[1]},${color[2]})`;
-  });
-
-  _getMeasureHoverColorRGB: Measure => string = memoizeWeak(measure => {
-    const color = this._getMeasureColor(measure);
-    return `rgb(${Math.min(color[0] + 20, 255)},${Math.min(
-      color[1] + 20,
-      255
-    )},${Math.min(color[2] + 20, 255)})`;
-  });
-
   _getExtents() {
     const renderableTrace = this._transformTrace(this.props.trace);
 
@@ -403,11 +344,6 @@ export default class Trace extends React.Component<Props, State> {
       endOffset,
       size: endOffset - startOffset,
     };
-  }
-
-  _getContentWidth() {
-    const {size} = this._getExtents();
-    return size * PX_PER_MS * this.state.zoom;
   }
 
   _getLayout(measure: RenderableMeasure<Measure>, startY: number) {
@@ -617,8 +553,8 @@ export default class Trace extends React.Component<Props, State> {
 
       ctx.fillStyle =
         hovered || selected
-          ? this._getMeasureHoverColorRGB(measure.measure)
-          : this._getMeasureColorRGB(measure.measure);
+          ? this._utils._getMeasureHoverColorRGB(measure.measure)
+          : this._utils._getMeasureColorRGB(measure.measure);
       ctx.fillRect(toInt(x), toInt(y), toInt(width), toInt(height));
 
       // skip text rendering for small measures
@@ -710,9 +646,6 @@ export default class Trace extends React.Component<Props, State> {
       return <div>empty trace</div>;
     }
 
-    // number of measures drawn, used to cap render complexity
-    let drawn = 0;
-
     const extents = this._getExtents();
     const {startOffset, endOffset} = extents;
 
@@ -745,74 +678,18 @@ export default class Trace extends React.Component<Props, State> {
               height={this.props.viewportHeight}
             />
           ) : (
-            <div
-              style={{
-                width: this.props.viewportWidth,
-                overflowX: 'scroll',
-                height: this.props.viewportHeight,
-              }}
-            >
-              <div
-                style={{
-                  position: 'relative',
-                  fontSize: '10px',
-                  whiteSpace: 'nowrap',
-                  width: this._getContentWidth(),
-                }}
-              >
-                {renderableTrace.map((measure, index) => {
-                  const {width, height, x, y, inView} = this._getLayout(
-                    measure,
-                    0
-                  );
-                  if (!inView) {
-                    return null;
-                  }
-                  if (
-                    width <
-                    this.props.viewportWidth * (DOM_DRAW_MIN_PERCENT / 100)
-                  ) {
-                    return null;
-                  }
-                  drawn++;
-                  if (drawn > DOM_DRAW_LIMIT) {
-                    return null;
-                  }
-                  return (
-                    <div
-                      key={index}
-                      data-index={index}
-                      title={`${(measure.measure.duration || 0).toFixed(2)}ms`}
-                      style={{
-                        position: 'absolute',
-                        width,
-                        height,
-                        overflow: 'hidden',
-                        backgroundColor: this._getMeasureColorRGB(
-                          measure.measure
-                        ),
-                        // transform: `translate(${x}px, ${y}px) translateZ(0)`,
-                        left: x,
-                        top: y,
-                        border:
-                          this.state.selection == measure
-                            ? 'solid red 1px'
-                            : null,
-                      }}
-                      onClick={this._handleMeasureClick}
-                    >
-                      &nbsp;
-                      {measure.measure.name}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <DOMRenderer
+              renderableTrace={renderableTrace}
+              zoom={this.state.zoom}
+              center={this.state.center}
+              extents={this._getExtents()}
+              viewportWidth={this.props.viewportWidth}
+              viewportHeight={this.props.viewportHeight}
+              onSelectionChange={this._handleSelectionChange}
+            />
           )}
           {this._renderTooltip()}
         </div>
-
-        {this.props.renderer === 'dom' && <span>drawn={drawn}</span>}
         <pre>
           {this.state.selection
             ? JSON.stringify(this.state.selection.measure, null, 2)
