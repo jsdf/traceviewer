@@ -55,8 +55,7 @@ const CANVAS_USE_FLOAT_DIMENSIONS = false;
 const CANVAS_OPAQUE = true;
 const CANVAS_SUPPORT_RETINA = true;
 const CANVAS_ZOOMING_TEXT_OPT = false;
-
-const TEXT_PADDING_PX = 2;
+const CANVAS_TEXT_PADDING_PX = 2;
 
 const toInt = CANVAS_USE_FLOAT_DIMENSIONS ? x => x : Math.floor;
 
@@ -633,7 +632,7 @@ export default class Trace extends React.Component<Props, State> {
         continue;
       }
 
-      const textWidth = toInt(Math.max(width - TEXT_PADDING_PX, 0));
+      const textWidth = toInt(Math.max(width - CANVAS_TEXT_PADDING_PX, 0));
 
       ctx.font = '10px Lucida Grande';
       ctx.fillStyle = 'black';
@@ -645,7 +644,7 @@ export default class Trace extends React.Component<Props, State> {
 
       ctx.fillText(
         labelTrimmed,
-        toInt(x + TEXT_PADDING_PX),
+        toInt(x + CANVAS_TEXT_PADDING_PX),
         toInt(y + BAR_HEIGHT / 2 + 4),
         textWidth
       );
