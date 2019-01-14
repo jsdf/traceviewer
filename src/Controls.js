@@ -1,5 +1,6 @@
 // @flow
 import React from 'react';
+import type {HandleStateChangeFn} from './State';
 
 type Extents = {
   startOffset: number,
@@ -10,7 +11,7 @@ type Props = {
   center: number,
   extents: Extents,
   zoom: number,
-  onChange: ({zoom?: number, center?: number}) => void,
+  onChange: HandleStateChangeFn,
 };
 
 export default class Controls extends React.Component<Props, void> {

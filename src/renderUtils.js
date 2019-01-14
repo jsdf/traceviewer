@@ -50,11 +50,16 @@ export function getLayout(
   measure: RenderableMeasure<Measure>,
   startY: number
 ) {
-  state.center;
+  const centerOffset = state.center;
 
-  const width = Math.max(state.zoom - BAR_X_GUTTER, 0);
+  const width = Math.max(
+    measure.measure.duration * PX_PER_MS * state.zoom - BAR_X_GUTTER,
+    0
+  );
   const height = BAR_HEIGHT;
-  const x = state.zoom + state.viewportWidth / 2;
+  const x =
+    (measure.measure.startTime - centerOffset) * PX_PER_MS * state.zoom +
+    state.viewportWidth / 2;
   const y = measure.stackIndex * (BAR_HEIGHT + BAR_Y_GUTTER) + startY;
 
   return {
