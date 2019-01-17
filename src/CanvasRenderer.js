@@ -22,23 +22,26 @@ import type {WebGLRenderState} from './WebGLRenderUtils';
 import {initWebGLRenderer} from './WebGLRenderUtils';
 import * as WebGLTextRenderUtils from './WebGLTextRenderUtils';
 
-type Props = {|
-  center: number,
+type Props = {
   extents: Extents,
-  zoom: number,
   viewportWidth: number,
   viewportHeight: number,
-  tooltip: ?Node,
-  truncateLabels?: boolean,
+  center: number,
+  dragging: boolean,
+  dragMoved: boolean,
   hovered: ?RenderableMeasure<Measure>,
   selection: ?RenderableMeasure<Measure>,
+  zoom: number,
+  zooming: boolean,
+  tooltip: ?Node,
+  truncateLabels?: boolean,
   renderableTrace: RenderableTrace,
   renderableTraceGroups: Map<string, RenderableTrace>,
   groupOrder?: Array<string>,
   renderer: 'canvas' | 'webgl',
   onSelectionChange: (selection: ?RenderableMeasure<Measure>) => void,
   onStateChange: HandleStateChangeFn,
-|};
+};
 
 type MouseEventWithTarget = {
   currentTarget: {

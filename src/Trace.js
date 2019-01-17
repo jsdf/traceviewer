@@ -29,7 +29,7 @@ type Props = {
   groupOrder?: Array<string>,
   truncateLabels: boolean,
   trace: Array<Measure>,
-  renderer: 'canvas' | 'dom',
+  renderer: 'canvas' | 'dom' | 'webgl',
   viewportWidth: number,
   viewportHeight: number,
 };
@@ -227,6 +227,7 @@ export default class Trace extends React.Component<Props, State> {
     const {startOffset, endOffset} = extents;
 
     const centerOffset = this.state.center;
+    const renderer = this.props.renderer;
     const rendered = (
       <div>
         {SHOW_CONTROLS && (
@@ -243,21 +244,18 @@ export default class Trace extends React.Component<Props, State> {
             position: 'relative',
           }}
         >
-          {this.props.renderer == 'canvas' || this.props.renderer == 'webgl' ? (
+          {renderer === 'canvas' || renderer === 'webgl' ? (
             <CanvasRenderer
               renderableTrace={renderableTrace}
               renderableTraceGroups={renderableTraceGroups}
               groupOrder={this.props.groupOrder}
-              zoom={this.state.zoom}
-              center={this.state.center}
+              {...this.state}
               extents={this._getExtents()}
               viewportWidth={this.props.viewportWidth}
               viewportHeight={this.props.viewportHeight}
-              selection={this.state.selection}
-              hovered={this.state.hovered}
               tooltip={this._tooltip}
               truncateLabels={this.props.truncateLabels}
-              renderer={this.props.renderer}
+              renderer={renderer}
               onStateChange={this._handleStateChange}
               onSelectionChange={this._handleSelectionChange}
             />

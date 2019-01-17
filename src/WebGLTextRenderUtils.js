@@ -3,7 +3,7 @@ import * as OpenSans from './OpenSans';
 import * as mat4 from 'gl-matrix/mat4';
 
 var scale = 22;
-var buffer = 0.7;
+var buffer = 0.3;
 var angle = 0;
 var gamma = 1;
 var debug = false;
@@ -321,9 +321,9 @@ void main() {
       );
 
       // glow
-      gl.uniform4fv(programInfo.uniformLocations.u_color, [0, 0, 0, 1]);
-      gl.uniform1f(programInfo.uniformLocations.u_buffer, buffer);
-      gl.drawArrays(gl.TRIANGLES, 0, vertexBufferItems);
+      // gl.uniform4fv(programInfo.uniformLocations.u_color, [1, 1, 1, 1]);
+      // gl.uniform1f(programInfo.uniformLocations.u_buffer, buffer);
+      // gl.drawArrays(gl.TRIANGLES, 0, vertexBufferItems);
 
       gl.uniform4fv(programInfo.uniformLocations.u_color, [0, 0, 0, 1]);
       gl.uniform1f(programInfo.uniformLocations.u_buffer, 192 / 256);
