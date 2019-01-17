@@ -7,7 +7,7 @@ import {PX_PER_MS, BAR_HEIGHT, BAR_Y_GUTTER, BAR_X_GUTTER} from './constants';
 
 type Color = [number, number, number];
 
-type StateForLayout = {
+export type StateForLayout = {
   center: number,
   viewportWidth: number,
   viewportHeight: number,

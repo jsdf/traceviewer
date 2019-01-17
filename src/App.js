@@ -4,7 +4,7 @@ import './App.css';
 import tracedata from './exampledata';
 import Trace from './Trace';
 
-const FIXED = true;
+const FIXED = false;
 const HEIGHT = FIXED ? 600 : window.innerHeight - 100;
 const WIDTH = window.innerWidth;
 
@@ -25,7 +25,11 @@ class App extends Component<void> {
           viewportWidth={WIDTH}
           viewportHeight={HEIGHT}
           renderer={
-            window.location.search.slice(1).includes('dom') ? 'dom' : 'canvas'
+            window.location.search.slice(1).includes('dom')
+              ? 'dom'
+              : window.location.search.slice(1).includes('webgl')
+                ? 'webgl'
+                : 'canvas'
           }
         />
       </div>

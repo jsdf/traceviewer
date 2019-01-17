@@ -243,7 +243,7 @@ export default class Trace extends React.Component<Props, State> {
             position: 'relative',
           }}
         >
-          {this.props.renderer == 'canvas' ? (
+          {this.props.renderer == 'canvas' || this.props.renderer == 'webgl' ? (
             <CanvasRenderer
               renderableTrace={renderableTrace}
               renderableTraceGroups={renderableTraceGroups}
@@ -257,6 +257,7 @@ export default class Trace extends React.Component<Props, State> {
               hovered={this.state.hovered}
               tooltip={this._tooltip}
               truncateLabels={this.props.truncateLabels}
+              renderer={this.props.renderer}
               onStateChange={this._handleStateChange}
               onSelectionChange={this._handleSelectionChange}
             />
