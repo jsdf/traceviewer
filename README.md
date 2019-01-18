@@ -16,7 +16,7 @@ trace viewer/flamechart component which can render large traces
 
 ## usage
 
-I haven't quite packaged this up for release yet, but if you want to try it now, you can clone this repo. The API is:
+I haven't quite cleaned this up for release yet, but if you want to try it now, you can clone this repo. The API is:
 
 ```js
 import Trace from './src/Trace';
