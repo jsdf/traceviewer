@@ -241,7 +241,7 @@ export function init(
       const str = toRender[labelIdx].label;
       const dimensions = measureText(str, size);
 
-      pen.x = toRender[labelIdx].x * 2;
+      pen.x = toRender[labelIdx].x * 2; // scale to screen space
       pen.y = toRender[labelIdx].y * 2;
       for (let chIdx = 0; chIdx < str.length; chIdx++) {
         const chr = str[chIdx];

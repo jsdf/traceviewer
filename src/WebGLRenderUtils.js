@@ -3,6 +3,7 @@
 import * as mat4 from 'gl-matrix/mat4';
 import type {RenderableTrace, Measure, Extents, Layout} from './renderUtils';
 import {getLayout, UtilsWithCache} from './renderUtils';
+import memoizeWeak from './memoizeWeak';
 
 export type WebGLRenderState = {
   center: number,
@@ -12,18 +13,20 @@ export type WebGLRenderState = {
   renderableTrace: RenderableTrace,
 };
 
-const colorCache = [];
-function getRandomColor(i) {
-  if (!colorCache[i]) {
-    colorCache[i] = [
-      Math.max(Math.random(), 0.25),
-      Math.max(Math.random(), 0.25),
-      Math.max(Math.random(), 0.25),
-      1.0,
-    ];
-  }
-  return colorCache[i];
+type Color = [number, number, number, number];
+
+function getRandomColor() {
+  return [
+    Math.max(Math.random(), 0.25),
+    Math.max(Math.random(), 0.25),
+    Math.max(Math.random(), 0.25),
+    1.0,
+  ];
 }
+
+const getColorForMeasure: Measure => Color = memoizeWeak(measure =>
+  getRandomColor()
+);
 
 const vsSource = `
     attribute vec4 aVertexPosition;
@@ -115,10 +118,15 @@ function initBuffers(gl, state) {
   // Now create an array of positions for the square.
 
   const positions = [];
+  const colors = [];
 
+  let positionLength = 0;
   for (let i = 0; i < state.renderableTrace.length; i++) {
     const measure = state.renderableTrace[i];
     const layout = getLayout(state, measure, 0 /*startY*/);
+    if (!layout.inView) {
+      continue;
+    }
 
     const x = layout.x / state.viewportWidth * 2 - 1;
     const y = layout.y / state.viewportHeight * 2 - 1; // flip sign
@@ -128,6 +136,12 @@ function initBuffers(gl, state) {
     positions.push(x + width, y, 1);
     positions.push(x, y + height, 1);
     positions.push(x + width, y + height, 1);
+    positionLength += SQUARE_VERTICES;
+
+    const color = getColorForMeasure(measure.measure);
+    for (let k = 0; k < SQUARE_VERTICES; k++) {
+      colors.push(...color);
+    }
   }
 
   // Now pass the list of positions into WebGL to build the
@@ -136,20 +150,13 @@ function initBuffers(gl, state) {
 
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
-  const colors = [];
-  for (let i = 0; i < state.renderableTrace.length; i++) {
-    const color = getRandomColor(i);
-    for (let k = 0; k < SQUARE_VERTICES; k++) {
-      colors.push(...color);
-    }
-  }
-
   const colorBuffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
 
   return {
     position: positionBuffer,
+    positionLength,
     color: colorBuffer,
   };
 }
@@ -177,9 +184,7 @@ function drawScene(gl, programInfo, buffers, state) {
   const zFar = 100.0;
   const projectionMatrix = mat4.create();
 
-  // note: glmatrix.js always has the first argument
-  // as the destination to receive the result.
-  // mat4.perspective(projectionMatrix, fieldOfView, aspect, zNear, zFar);
+  // orthographic projection. flip y axis
   mat4.ortho(projectionMatrix, -1, 1, 1, -1, zNear, zFar);
 
   // Set the drawing position to the "identity" point, which is
@@ -197,15 +202,9 @@ function drawScene(gl, programInfo, buffers, state) {
 
   for (
     let primitiveIdx = 0;
-    primitiveIdx < state.renderableTrace.length;
+    primitiveIdx < buffers.positionLength / 4;
     primitiveIdx++
   ) {
-    const measure = state.renderableTrace[primitiveIdx];
-    const layout = getLayout(state, measure, 0 /*startY*/);
-    if (!layout.inView) {
-      continue;
-    }
-
     // Tell WebGL how to pull out the positions from the position
     // buffer into the vertexPosition attribute
     {
