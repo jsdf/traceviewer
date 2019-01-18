@@ -20,6 +20,7 @@ import debounce from 'debounce';
 import memoizeWeak from './memoizeWeak';
 import type {WebGLRenderState} from './WebGLRenderUtils';
 import {initWebGLRenderer} from './WebGLRenderUtils';
+import type {RenderableText} from './WebGLTextRenderUtils';
 import * as WebGLTextRenderUtils from './WebGLTextRenderUtils';
 
 type Props = {
@@ -361,7 +362,7 @@ export default class CanvasRenderer extends React.Component<Props, void> {
 
   _webglRender: ?(WebGLRenderState) => void = null;
   _webglTextRenderInit = false;
-  _webglTextRender: ?(string, number, number) => void = null;
+  _webglTextRender: ?(Array<RenderableText>) => void = null;
   _webglTextMeasure: ?(string) => number = null;
 
   _renderCanvas() {
@@ -391,6 +392,7 @@ export default class CanvasRenderer extends React.Component<Props, void> {
         if (textRender && measureText) {
           const renderableTrace = this.props.renderableTrace;
           this._renderedShapes.clear();
+          const textToRender = [];
           for (var index = 0; index < renderableTrace.length; index++) {
             const measure = renderableTrace[index];
 
@@ -433,13 +435,19 @@ export default class CanvasRenderer extends React.Component<Props, void> {
                 )
               : label;
 
-            textRender(
-              labelTrimmed,
-              x + CANVAS_TEXT_PADDING_PX,
-              y + WEBGL_TEXT_TOP_PADDING_PX + BAR_HEIGHT / 2 + 4
-              // textWidth
-            );
+            textToRender.push({
+              label: labelTrimmed,
+              x: x + CANVAS_TEXT_PADDING_PX,
+              y: y + WEBGL_TEXT_TOP_PADDING_PX + BAR_HEIGHT / 2 + 4,
+            });
+
+            // textRender(
+            //  labelTrimmed,
+            //  x + CANVAS_TEXT_PADDING_PX,
+            //  y + WEBGL_TEXT_TOP_PADDING_PX + BAR_HEIGHT / 2 + 4
+            // );
           }
+          textRender(textToRender);
         }
       } else if (this.props.zooming && CANVAS_CSS_ZOOM) {
         // not finished...

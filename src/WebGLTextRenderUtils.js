@@ -2,6 +2,8 @@
 import * as OpenSans from './OpenSans';
 import * as mat4 from 'gl-matrix/mat4';
 
+export type RenderableText = {label: string, x: number, y: number};
+
 var scale = 22;
 var buffer = 0.3;
 var angle = 0;
@@ -135,17 +137,7 @@ function initShaderProgram(gl, vsSource, fsSource) {
   return shaderProgram;
 }
 
-export function init(
-  gl: WebGLRenderingContext,
-  onReady: (fns: {
-    render: (text: string, x: number, y: number) => void,
-    measureText: (text: string) => number,
-  }) => void
-) {
-  const canvas = gl.canvas;
-  gl.getExtension('OES_standard_derivatives');
-
-  const vsSource = `
+const vsSource = `
 attribute vec2 a_pos;
 attribute vec2 a_texcoord;
 
@@ -159,7 +151,7 @@ void main() {
     v_texcoord = a_texcoord / u_texsize;
 }`;
 
-  const fsSource = `
+const fsSource = `
 precision mediump float;
 
 uniform sampler2D u_texture;
@@ -179,6 +171,17 @@ void main() {
         gl_FragColor = vec4(u_color.rgb, alpha * u_color.a);
     }
 }`;
+
+export function init(
+  gl: WebGLRenderingContext,
+  onReady: (fns: {
+    render: (Array<RenderableText>) => void,
+    measureText: (text: string) => number,
+  }) => void
+) {
+  const canvas = gl.canvas;
+  gl.getExtension('OES_standard_derivatives');
+
   const shaderProgram = initShaderProgram(gl, vsSource, fsSource);
 
   // Initialize shaders
@@ -208,133 +211,109 @@ void main() {
     gl.enableVertexAttribArray(programInfo.attribLocations.a_texcoord);
   }
 
-  function doDraw(labelToDraw: string, x: number, y: number) {
-    switchToProgram();
+  var pMatrix = mat4.create();
+  mat4.ortho(pMatrix, 0, canvas.width, canvas.height, 0, 0, -1);
 
-    var pMatrix = mat4.create();
-    mat4.ortho(pMatrix, 0, canvas.width, canvas.height, 0, 0, -1);
+  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
 
-    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+  gl.enable(gl.BLEND);
 
-    gl.enable(gl.BLEND);
+  var vertexBuffer = gl.createBuffer();
+  var textureBuffer = gl.createBuffer();
+  var vertexBufferItems = 0;
+  var textureBufferItems = 0;
 
-    var vertexBuffer = gl.createBuffer();
-    var textureBuffer = gl.createBuffer();
-    var vertexBufferItems = 0;
-    var textureBufferItems = 0;
+  function createText(toRender: Array<RenderableText>) {
+    const size = scale;
 
-    function createText(str, size) {
-      var vertexElements = [];
-      var textureElements = [];
+    var vertexElements = [];
+    var textureElements = [];
+    var pen = {
+      x: 0,
+      y: 0,
+    };
 
+    for (var labelIdx = 0; labelIdx < toRender.length; labelIdx++) {
+      const str = toRender[labelIdx].label;
       var dimensions = measureText(str, size);
 
-      var pen = {
-        // x: canvas.width / 2 - dimensions.advance / 2,
-        // y: canvas.height / 2,
-        x: 0,
-        y: 0,
-      };
-      for (var i = 0; i < str.length; i++) {
-        var chr = str[i];
+      pen.x = toRender[labelIdx].x * 2;
+      pen.y = toRender[labelIdx].y * 2;
+      for (var chIdx = 0; chIdx < str.length; chIdx++) {
+        var chr = str[chIdx];
         drawGlyph(chr, pen, size, vertexElements, textureElements);
       }
-
-      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-      gl.bufferData(
-        gl.ARRAY_BUFFER,
-        new Float32Array(vertexElements),
-        gl.STATIC_DRAW
-      );
-      vertexBufferItems = vertexElements.length / 2;
-
-      gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffer);
-      gl.bufferData(
-        gl.ARRAY_BUFFER,
-        new Float32Array(textureElements),
-        gl.STATIC_DRAW
-      );
-      textureBufferItems = textureElements.length / 2;
     }
 
-    function draw(str: string, x: number, y: number) {
-      // console.log('rendering text', str);
-      // gl.clearColor(0.9, 0.9, 0.9, 1);
-      // gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array(vertexElements),
+      gl.STATIC_DRAW
+    );
+    vertexBufferItems = vertexElements.length / 2;
 
-      createText(str, scale);
+    gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array(textureElements),
+      gl.STATIC_DRAW
+    );
+    textureBufferItems = textureElements.length / 2;
+  }
 
-      var mvMatrix = mat4.create();
-      mat4.identity(mvMatrix);
+  function draw(toRender: Array<RenderableText>) {
+    switchToProgram();
 
-      // crap for text rotation
-      // mat4.translate(mvMatrix, mvMatrix, [
-      //   canvas.width / 2,
-      //   canvas.height / 2,
-      //   0,
-      // ]);
-      // mat4.rotateZ(mvMatrix, mvMatrix, angle);
-      // mat4.translate(mvMatrix, mvMatrix, [
-      //   -canvas.width / 2,
-      //   -canvas.height / 2,
-      //   0,
-      // ]);
+    createText(toRender);
 
-      // position text
-      // TODO: not center
-      mat4.translate(mvMatrix, mvMatrix, [x * 2, y * 2, 0]);
-      // mat4.translate(mvMatrix, mvMatrix, [0, 0, 0]);
+    var mvMatrix = mat4.create();
+    mat4.identity(mvMatrix);
 
-      var mvpMatrix = mat4.create();
-      mat4.multiply(mvpMatrix, pMatrix, mvMatrix);
-      gl.uniformMatrix4fv(
-        programInfo.uniformLocations.u_matrix,
-        false,
-        mvpMatrix
-      );
+    var mvpMatrix = mat4.create();
+    mat4.multiply(mvpMatrix, pMatrix, mvMatrix);
+    gl.uniformMatrix4fv(
+      programInfo.uniformLocations.u_matrix,
+      false,
+      mvpMatrix
+    );
 
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.uniform1i(programInfo.uniformLocations.u_texture, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.uniform1i(programInfo.uniformLocations.u_texture, 0);
 
-      // gl.uniform1f(programInfo.uniformLocations.u_scale, 1.0);
-      gl.uniform1f(programInfo.uniformLocations.u_debug, debug ? 1 : 0);
+    // gl.uniform1f(programInfo.uniformLocations.u_scale, 1.0);
+    gl.uniform1f(programInfo.uniformLocations.u_debug, debug ? 1 : 0);
 
-      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-      gl.vertexAttribPointer(
-        programInfo.attribLocations.a_pos,
-        2,
-        gl.FLOAT,
-        false,
-        0,
-        0
-      );
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.vertexAttribPointer(
+      programInfo.attribLocations.a_pos,
+      2,
+      gl.FLOAT,
+      false,
+      0,
+      0
+    );
 
-      gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffer);
-      gl.vertexAttribPointer(
-        programInfo.attribLocations.a_texcoord,
-        2,
-        gl.FLOAT,
-        false,
-        0,
-        0
-      );
+    gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffer);
+    gl.vertexAttribPointer(
+      programInfo.attribLocations.a_texcoord,
+      2,
+      gl.FLOAT,
+      false,
+      0,
+      0
+    );
 
-      // glow
-      // gl.uniform4fv(programInfo.uniformLocations.u_color, [1, 1, 1, 1]);
-      // gl.uniform1f(programInfo.uniformLocations.u_buffer, buffer);
-      // gl.drawArrays(gl.TRIANGLES, 0, vertexBufferItems);
+    // glow
+    // gl.uniform4fv(programInfo.uniformLocations.u_color, [1, 1, 1, 1]);
+    // gl.uniform1f(programInfo.uniformLocations.u_buffer, buffer);
+    // gl.drawArrays(gl.TRIANGLES, 0, vertexBufferItems);
 
-      gl.uniform4fv(programInfo.uniformLocations.u_color, [0, 0, 0, 1]);
-      gl.uniform1f(programInfo.uniformLocations.u_buffer, 192 / 256);
-      gl.uniform1f(
-        programInfo.uniformLocations.u_gamma,
-        gamma * 1.4142 / scale
-      );
-      gl.drawArrays(gl.TRIANGLES, 0, vertexBufferItems);
-    }
-
-    draw(labelToDraw, x, y);
+    gl.uniform4fv(programInfo.uniformLocations.u_color, [0, 0, 0, 1]);
+    gl.uniform1f(programInfo.uniformLocations.u_buffer, 192 / 256);
+    gl.uniform1f(programInfo.uniformLocations.u_gamma, gamma * 1.4142 / scale);
+    gl.drawArrays(gl.TRIANGLES, 0, vertexBufferItems);
   }
 
   getAtlas(atlas => {
@@ -364,8 +343,9 @@ void main() {
 
     // ready
     onReady({
-      render: (newText: string, x: number, y: number) => {
-        doDraw(sanitizeText(newText), x, y);
+      render: (toRender: Array<RenderableText>) => {
+        toRender.forEach(item => (item.label = sanitizeText(item.label)));
+        draw(toRender);
       },
       measureText: (text: string) =>
         measureText(sanitizeText(text), scale).advance,
