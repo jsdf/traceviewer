@@ -4,7 +4,7 @@ import './App.css';
 import tracedata from './exampledata';
 import Trace from './Trace';
 
-const FIXED = false;
+const FIXED = true;
 const HEIGHT = FIXED ? 600 : window.innerHeight - 100;
 const WIDTH = window.innerWidth;
 

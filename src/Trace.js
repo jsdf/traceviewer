@@ -230,7 +230,7 @@ export default class Trace extends React.Component<Props, State> {
     const renderer = this.props.renderer;
     const rendered = (
       <div>
-        {SHOW_CONTROLS && (
+        {(SHOW_CONTROLS || this.props.renderer === 'dom') && (
           <Controls
             zoom={this.state.zoom}
             center={this.state.center}

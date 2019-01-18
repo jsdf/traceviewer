@@ -17,6 +17,7 @@ type Props = {
 
 const DOM_DRAW_LIMIT = 500;
 const DOM_DRAW_MIN_PERCENT = 0.3;
+const DOM_SCROLLABLE = false;
 
 export default class DOMRenderer extends React.Component<Props, void> {
   _utils = new UtilsWithCache();
@@ -47,7 +48,7 @@ export default class DOMRenderer extends React.Component<Props, void> {
         <div
           style={{
             width: this.props.viewportWidth,
-            overflowX: 'scroll',
+            overflowX: DOM_SCROLLABLE ? 'scroll' : null,
             height: this.props.viewportHeight,
           }}
         >
@@ -56,7 +57,7 @@ export default class DOMRenderer extends React.Component<Props, void> {
               position: 'relative',
               fontSize: '10px',
               whiteSpace: 'nowrap',
-              width: this._getContentWidth(),
+              width: DOM_SCROLLABLE ? this._getContentWidth() : null,
             }}
           >
             {this.props.renderableTrace.map((measure, index) => {
