@@ -4,11 +4,13 @@ import * as mat4 from 'gl-matrix/mat4';
 
 export type RenderableText = {label: string, x: number, y: number};
 
-var scale = 22;
-var buffer = 0.3;
-var angle = 0;
-var gamma = 1;
-var debug = false;
+const RENDER_TEXT_GLOW = false;
+
+const scale = 22;
+const buffer = 0.3;
+const angle = 0;
+const gamma = 1;
+const debug = false;
 const {metrics, getAtlas} = OpenSans;
 
 // TODO: fix memory leack
@@ -21,20 +23,20 @@ const sanitizeText = input => {
 };
 
 function drawGlyph(chr, pen, size, vertexElements, textureElements) {
-  var metric = metrics.chars[chr];
+  const metric = metrics.chars[chr];
   if (!metric) return;
 
-  var scale = size / metrics.size;
+  const scale = size / metrics.size;
 
-  var factor = 1;
+  const factor = 1;
 
-  var width = metric[0];
-  var height = metric[1];
-  var horiBearingX = metric[2];
-  var horiBearingY = metric[3];
-  var horiAdvance = metric[4];
-  var posX = metric[5];
-  var posY = metric[6];
+  let width = metric[0];
+  let height = metric[1];
+  const horiBearingX = metric[2];
+  const horiBearingY = metric[3];
+  const horiAdvance = metric[4];
+  const posX = metric[5];
+  const posY = metric[6];
 
   if (width > 0 && height > 0) {
     width += metrics.buffer * 2;
@@ -78,13 +80,13 @@ function drawGlyph(chr, pen, size, vertexElements, textureElements) {
 }
 
 function measureText(text: string, size) {
-  var dimensions = {
+  const dimensions = {
     advance: 0,
   };
 
-  var scale = size / metrics.size;
-  for (var i = 0; i < text.length; i++) {
-    var horiAdvance = metrics.chars[text[i]][4];
+  const scale = size / metrics.size;
+  for (let i = 0; i < text.length; i++) {
+    const horiAdvance = metrics.chars[text[i]][4];
     dimensions.advance += horiAdvance * scale;
   }
 
@@ -203,7 +205,7 @@ export function init(
   };
   console.log({programInfo});
 
-  var texture = gl.createTexture();
+  const texture = gl.createTexture();
 
   function switchToProgram() {
     gl.useProgram(programInfo.program);
@@ -211,36 +213,38 @@ export function init(
     gl.enableVertexAttribArray(programInfo.attribLocations.a_texcoord);
   }
 
-  var pMatrix = mat4.create();
+  const pMatrix = mat4.create();
   mat4.ortho(pMatrix, 0, canvas.width, canvas.height, 0, 0, -1);
 
   gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
 
   gl.enable(gl.BLEND);
 
-  var vertexBuffer = gl.createBuffer();
-  var textureBuffer = gl.createBuffer();
-  var vertexBufferItems = 0;
-  var textureBufferItems = 0;
+  const vertexBuffer = gl.createBuffer();
+  const textureBuffer = gl.createBuffer();
+  let vertexBufferItems = 0;
+  let textureBufferItems = 0;
+  const mvMatrix = mat4.create();
+  const mvpMatrix = mat4.create();
 
   function createText(toRender: Array<RenderableText>) {
     const size = scale;
 
-    var vertexElements = [];
-    var textureElements = [];
-    var pen = {
+    const vertexElements = [];
+    const textureElements = [];
+    const pen = {
       x: 0,
       y: 0,
     };
 
-    for (var labelIdx = 0; labelIdx < toRender.length; labelIdx++) {
+    for (let labelIdx = 0; labelIdx < toRender.length; labelIdx++) {
       const str = toRender[labelIdx].label;
-      var dimensions = measureText(str, size);
+      const dimensions = measureText(str, size);
 
       pen.x = toRender[labelIdx].x * 2;
       pen.y = toRender[labelIdx].y * 2;
-      for (var chIdx = 0; chIdx < str.length; chIdx++) {
-        var chr = str[chIdx];
+      for (let chIdx = 0; chIdx < str.length; chIdx++) {
+        const chr = str[chIdx];
         drawGlyph(chr, pen, size, vertexElements, textureElements);
       }
     }
@@ -267,10 +271,8 @@ export function init(
 
     createText(toRender);
 
-    var mvMatrix = mat4.create();
     mat4.identity(mvMatrix);
 
-    var mvpMatrix = mat4.create();
     mat4.multiply(mvpMatrix, pMatrix, mvMatrix);
     gl.uniformMatrix4fv(
       programInfo.uniformLocations.u_matrix,
@@ -306,9 +308,11 @@ export function init(
     );
 
     // glow
-    // gl.uniform4fv(programInfo.uniformLocations.u_color, [1, 1, 1, 1]);
-    // gl.uniform1f(programInfo.uniformLocations.u_buffer, buffer);
-    // gl.drawArrays(gl.TRIANGLES, 0, vertexBufferItems);
+    if (RENDER_TEXT_GLOW) {
+      gl.uniform4fv(programInfo.uniformLocations.u_color, [1, 1, 1, 1]);
+      gl.uniform1f(programInfo.uniformLocations.u_buffer, buffer);
+      gl.drawArrays(gl.TRIANGLES, 0, vertexBufferItems);
+    }
 
     gl.uniform4fv(programInfo.uniformLocations.u_color, [0, 0, 0, 1]);
     gl.uniform1f(programInfo.uniformLocations.u_buffer, 192 / 256);
@@ -320,7 +324,6 @@ export function init(
     switchToProgram();
     // loaded atlas texture
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    // void gl.texImage2D(target, level, internalformat, format, type, HTMLImageElement? pixels);
 
     gl.texImage2D(
       gl.TEXTURE_2D, //target
