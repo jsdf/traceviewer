@@ -5,7 +5,8 @@ trace viewer/flamechart component which can render large traces
 ## demos
 
 - [webgl renderer](https://jsdf.github.io/flamechart/?webgl)
-- [canvas renderer](https://jsdf.github.io/flamechart/?canvas)
+- [canvas renderer](https://jsdf.github.io/flamechart/?canvas&single)
+- [canvas renderer (with multiple traces, aligned)](https://jsdf.github.io/flamechart/?canvas)
 - [dom renderer](https://jsdf.github.io/flamechart/?dom)
 
 ## screenshots
