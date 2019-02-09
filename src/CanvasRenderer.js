@@ -18,8 +18,9 @@ import type {HandleStateChangeFn} from './State';
 import memoize from 'memoize-one';
 import debounce from 'debounce';
 import memoizeWeak from './memoizeWeak';
-import type {WebGLRenderState} from './WebGLRenderUtils';
+import type {WebGLRenderState} from './WebGLRenderState';
 import {initWebGLRenderer} from './WebGLRenderUtils';
+import {initWebGLRenderer as initWebGLGPUTransformRenderer} from './WebGLGPUTranformRenderUtils';
 import type {RenderableText} from './WebGLTextRenderUtils';
 import * as WebGLTextRenderUtils from './WebGLTextRenderUtils';
 
@@ -28,11 +29,13 @@ type Props = {
   viewportWidth: number,
   viewportHeight: number,
   center: number,
+  defaultCenter: number,
   dragging: boolean,
   dragMoved: boolean,
   hovered: ?RenderableMeasure<Measure>,
   selection: ?RenderableMeasure<Measure>,
   zoom: number,
+  defaultZoom: number,
   zooming: boolean,
   tooltip: ?Node,
   truncateLabels?: boolean,
@@ -65,6 +68,7 @@ const CANVAS_TEXT_PADDING_PX = 2;
 const WEBGL_TEXT_TOP_PADDING_PX = -2;
 const CANVAS_USE_WEBGL = false;
 const WEBGL_TRUNCATE_BIAS = 20;
+const WEBGL_USE_GPU_TRANSFORM = true;
 
 const toInt = CANVAS_USE_FLOAT_DIMENSIONS ? x => x : Math.floor;
 
@@ -373,7 +377,9 @@ export default class CanvasRenderer extends React.Component<Props, void> {
       if (CANVAS_USE_WEBGL || this.props.renderer == 'webgl') {
         if (!this._webglRender) {
           const gl = this._getCanvasGLContext(canvas);
-          this._webglRender = initWebGLRenderer(gl);
+          this._webglRender = (WEBGL_USE_GPU_TRANSFORM
+            ? initWebGLGPUTransformRenderer
+            : initWebGLRenderer)(gl, this.props);
         }
         this._webglRender(this.props);
 

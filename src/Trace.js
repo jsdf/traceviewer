@@ -24,6 +24,7 @@ import {
 } from './constants';
 
 const SHOW_CONTROLS = false;
+const USE_PERSISTENT_STATE = false;
 
 type Props = {
   groupOrder?: Array<string>,
@@ -36,11 +37,13 @@ type Props = {
 
 type State = {
   center: number,
+  defaultCenter: number,
   dragging: boolean,
   dragMoved: boolean,
   hovered: ?RenderableMeasure<Measure>,
   selection: ?RenderableMeasure<Measure>,
   zoom: number,
+  defaultZoom: number,
   zooming: boolean,
 };
 
@@ -49,7 +52,7 @@ const run = fn => fn();
 
 function loadValue(name: string, defaultVal: number) {
   const item = localStorage.getItem(name);
-  if (item != null) {
+  if (USE_PERSISTENT_STATE && item != null) {
     const parsed = parseFloat(item);
     if (!Number.isNaN(parsed)) {
       return parsed;
@@ -69,17 +72,19 @@ export default class Trace extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
     const {startOffset, size} = this._getExtents();
-    const zoom = loadValue('zoom', 1);
+    const defaultZoom = 1;
+    const defaultCenter =
+      startOffset + this.props.viewportWidth / PX_PER_MS / 2;
+    const zoom = loadValue('zoom', defaultZoom);
     this.state = {
       dragging: false,
       dragMoved: false,
       selection: null,
       hovered: null,
-      center: loadValue(
-        'center',
-        startOffset + this.props.viewportWidth / PX_PER_MS / 2
-      ),
+      center: loadValue('center', defaultCenter),
+      defaultCenter,
       zoom,
+      defaultZoom,
       zooming: false,
     };
   }

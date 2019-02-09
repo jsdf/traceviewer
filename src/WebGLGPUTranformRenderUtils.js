@@ -6,9 +6,11 @@ import {getLayout, UtilsWithCache} from './renderUtils';
 import memoizeWeak from './memoizeWeak';
 import type {WebGLRenderState} from './WebGLRenderState';
 import {getRandomColor, getColorForMeasure} from './WebGLColorUtils';
+import {PX_PER_MS} from './constants';
 
-// this renderer builds arrays of vertices and vertex colors each render
-
+// this renderer builds arrays of vertices and vertex colors once and then
+// just applies a transform matrix each render
+//
 const vsSource = `
     attribute vec4 aVertexPosition;
     attribute vec4 aVertexColor;
@@ -91,13 +93,20 @@ function initBuffers(gl, state) {
   const colors = [];
 
   let positionLength = 0;
+
+  // init vertices using some zoom+center that we can use as the basis for
+  // view transforms later
+  const defaultLayoutState = {
+    center: state.defaultCenter,
+    viewportWidth: state.viewportWidth,
+    viewportHeight: state.viewportHeight,
+    zoom: state.defaultZoom,
+  };
   for (let i = 0; i < state.renderableTrace.length; i++) {
     const measure = state.renderableTrace[i];
-    const layout = getLayout(state, measure, 0 /*startY*/);
-    if (!layout.inView) {
-      continue;
-    }
+    const layout = getLayout(defaultLayoutState, measure, 0 /*startY*/);
 
+    // TODO: move these transformations to screen coords to transform stage
     const x = layout.x / state.viewportWidth * 2 - 1;
     const y = layout.y / state.viewportHeight * 2 - 1; // flip sign
     const width = layout.width / state.viewportWidth * 2;
@@ -159,8 +168,35 @@ function drawScene(gl, programInfo, buffers, state) {
   mat4.translate(
     modelViewMatrix, // destination matrix
     modelViewMatrix, // matrix to translate
-    [-0.0, 0.0, -6.0] // ??? don't understand how this works
+    [
+      0.0,
+      0.0,
+      -6.0, // ??? don't get clipped ??? needs to be < -1.0
+    ]
   ); // amount to translate
+
+  // TODO: extract transformation logic to render utils
+  const offsetX = (state.defaultCenter - state.center) * PX_PER_MS;
+  if (state.defaultZoom == 0) {
+    throw new Error('will divide by state.defaultZoom of zero');
+  }
+  const scale = state.zoom / state.defaultZoom;
+  console.log({offsetX, scale});
+  mat4.translate(
+    modelViewMatrix, // destination matrix
+    modelViewMatrix, // matrix to translate
+    [
+      // TODO: extract transformation logic to render utils
+      scale * offsetX / state.viewportWidth * 2, // transform to clip space coords
+      0.0,
+      0.0,
+    ]
+  );
+  mat4.scale(
+    modelViewMatrix, // destination matrix
+    modelViewMatrix, // matrix to translate
+    [scale, 1.0, 1.0]
+  );
 
   for (
     let primitiveIdx = 0;
@@ -206,8 +242,8 @@ function drawScene(gl, programInfo, buffers, state) {
       );
       gl.enableVertexAttribArray(programInfo.attribLocations.vertexColor);
     }
-    // Tell WebGL to use our program when drawing
 
+    // Tell WebGL to use our program when drawing
     gl.useProgram(programInfo.program);
 
     // Set the shader uniforms
@@ -234,7 +270,7 @@ function drawScene(gl, programInfo, buffers, state) {
 }
 export function initWebGLRenderer(
   gl: WebGLRenderingContext,
-  _initState: WebGLRenderState
+  initState: WebGLRenderState
 ) {
   // Vertex shader program
 
@@ -261,10 +297,9 @@ export function initWebGLRenderer(
   };
   console.log({programInfo});
 
-  return function rerender(state: WebGLRenderState) {
-    const buffers = initBuffers(gl, state);
+  const buffers = initBuffers(gl, initState);
 
-    // Draw the scene
+  return function rerender(state: WebGLRenderState) {
     drawScene(gl, programInfo, buffers, state);
   };
 }
