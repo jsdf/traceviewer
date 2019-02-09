@@ -380,11 +380,15 @@ export default class CanvasRenderer extends React.Component<Props, void> {
         if (!this._webglTextRenderInit) {
           this._webglTextRenderInit = true;
           const gl = this._getCanvasGLContext(canvas);
-          WebGLTextRenderUtils.init(gl, ({render, measureText}) => {
-            this._webglTextRender = render;
-            this._webglTextMeasure = measureText;
-            this._renderCanvas();
-          });
+          WebGLTextRenderUtils.init(
+            gl,
+            ({render, measureText}) => {
+              this._webglTextRender = render;
+              this._webglTextMeasure = measureText;
+              this._renderCanvas();
+            },
+            CANVAS_SUPPORT_RETINA ? window.devicePixelRatio : 1
+          );
         }
 
         const textRender = this._webglTextRender;
@@ -431,7 +435,7 @@ export default class CanvasRenderer extends React.Component<Props, void> {
                   measure,
                   measureText,
                   label,
-                  textWidth * window.devicePixelRatio - WEBGL_TRUNCATE_BIAS
+                  textWidth - WEBGL_TRUNCATE_BIAS
                 )
               : label;
 

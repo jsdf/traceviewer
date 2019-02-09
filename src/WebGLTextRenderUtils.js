@@ -6,7 +6,7 @@ export type RenderableText = {label: string, x: number, y: number};
 
 const RENDER_TEXT_GLOW = false;
 
-const scale = 22;
+const scale = 11;
 const buffer = 0.3;
 const angle = 0;
 const gamma = 1;
@@ -179,7 +179,8 @@ export function init(
   onReady: (fns: {
     render: (Array<RenderableText>) => void,
     measureText: (text: string) => number,
-  }) => void
+  }) => void,
+  pixelRatio: number
 ) {
   const canvas = gl.canvas;
   gl.getExtension('OES_standard_derivatives');
@@ -214,7 +215,15 @@ export function init(
   }
 
   const pMatrix = mat4.create();
-  mat4.ortho(pMatrix, 0, canvas.width, canvas.height, 0, 0, -1);
+  mat4.ortho(
+    pMatrix,
+    0,
+    canvas.width / pixelRatio,
+    canvas.height / pixelRatio,
+    0,
+    0,
+    -1
+  );
 
   gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
 
@@ -241,8 +250,8 @@ export function init(
       const str = toRender[labelIdx].label;
       const dimensions = measureText(str, size);
 
-      pen.x = toRender[labelIdx].x * 2; // scale to screen space
-      pen.y = toRender[labelIdx].y * 2;
+      pen.x = toRender[labelIdx].x; // scale to screen space
+      pen.y = toRender[labelIdx].y;
       for (let chIdx = 0; chIdx < str.length; chIdx++) {
         const chr = str[chIdx];
         drawGlyph(chr, pen, size, vertexElements, textureElements);
