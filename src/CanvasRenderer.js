@@ -58,6 +58,7 @@ type MouseEventWithTarget = {
   clientY: number,
 };
 
+const CANVAS_DRAW_TEXT = true;
 const CANVAS_DRAW_TEXT_MIN_PX = 35;
 const CANVAS_CSS_ZOOM = false;
 const CANVAS_USE_FLOAT_DIMENSIONS = false;
@@ -69,6 +70,7 @@ const WEBGL_TEXT_TOP_PADDING_PX = -2;
 const CANVAS_USE_WEBGL = false;
 const WEBGL_TRUNCATE_BIAS = 20;
 const WEBGL_USE_GPU_TRANSFORM = true;
+const CANVAS_RENDER_60FPS = false;
 
 const toInt = CANVAS_USE_FLOAT_DIMENSIONS ? x => x : Math.floor;
 
@@ -84,7 +86,7 @@ function truncateText(text: string, endSize: number) {
 
 export default class CanvasRenderer extends React.Component<Props, void> {
   _canvas: ?Node = null;
-  _renderedShapes: Map<Layout, RenderableMeasure<Measure>> = new Map();
+  _renderedShapes: Array<[Layout, RenderableMeasure<Measure>]> = [];
   _renderedZoom: number = 1;
   _renderedCenter: number = 1;
   _mouseX = 0;
@@ -94,11 +96,24 @@ export default class CanvasRenderer extends React.Component<Props, void> {
   componentDidMount() {
     document.addEventListener('mouseup', this._mouseUp);
     const canvas = this._canvas;
-    this._renderCanvasReq();
+    if (CANVAS_RENDER_60FPS) {
+      this.rAFLoop();
+    } else {
+      this._renderCanvasWithFramecount();
+    }
   }
 
+  rAFLoop = () => {
+    requestAnimationFrame(() => {
+      this._renderCanvasWithFramecount();
+      this.rAFLoop();
+    });
+  };
+
   componentDidUpdate() {
-    this._renderCanvasReq();
+    if (!CANVAS_RENDER_60FPS) {
+      this._renderCanvasWithFramecount();
+    }
   }
 
   // TODO: remove this duplication?
@@ -123,7 +138,7 @@ export default class CanvasRenderer extends React.Component<Props, void> {
     const {canvasMouseX, canvasMouseY} = this._getCanvasMousePos(
       (event: $FlowFixMe)
     );
-    const intersecting = Array.from(this._renderedShapes.entries()).find(
+    const intersecting = this._renderedShapes.find(
       ([{x, y, width, height}]) =>
         !(
           canvasMouseX < x ||
@@ -326,33 +341,28 @@ export default class CanvasRenderer extends React.Component<Props, void> {
     return labelTrimmed;
   }
 
+  _renderCanvasWithFramecount() {
+    const curSecond = Math.floor(performance.now() / 1000);
+    if (curSecond !== frameSecond) {
+      lastFrameFPS = framecounter;
+      framecounter = 0;
+      frameSecond = curSecond;
+    } else {
+      framecounter++;
+    }
+
+    this._renderCanvas();
+  }
+
   _renderCanvasReq = (() => {
     let rafID = null;
-    let lastTime = performance.now();
 
     return () => {
+      return;
       if (rafID == null) {
         rafID = requestAnimationFrame(() => {
-          const curSecond = Math.floor(performance.now() / 1000);
-          if (curSecond !== frameSecond) {
-            // console.log(framecounter, 'fps');
-            lastFrameFPS = framecounter;
-            framecounter = 0;
-            frameSecond = curSecond;
-          } else {
-            framecounter++;
-          }
-
-          const nowTime = performance.now();
-          // console.log(
-          //   'inter frame time',
-          //   (nowTime - lastTime).toFixed(1),
-          //   'ms'
-          // );
-          lastTime = nowTime;
-
-          this._renderCanvas();
           rafID = null;
+          this._renderCanvasWithFramecount();
         });
       } else {
         console.log('skipping frame');
@@ -369,9 +379,66 @@ export default class CanvasRenderer extends React.Component<Props, void> {
   _webglTextRender: ?(Array<RenderableText>) => void = null;
   _webglTextMeasure: ?(string) => number = null;
 
+  _renderTextWebGL() {
+    const textRender = this._webglTextRender;
+    const measureText = this._webglTextMeasure;
+    if (CANVAS_DRAW_TEXT && textRender && measureText) {
+      const renderableTrace = this.props.renderableTrace;
+      this._renderedShapes = [];
+      const textToRender = [];
+      for (var index = 0; index < renderableTrace.length; index++) {
+        const measure = renderableTrace[index];
+
+        const layout = getLayout(this.props, measure, 0);
+        const {width, height, x, y, inView} = layout;
+
+        if (!inView) {
+          continue;
+        }
+
+        this._renderedShapes.push([layout, measure]);
+
+        // skip text rendering for small measures
+        // text is by far the most expensive part of rendering the trace
+        if (width < CANVAS_DRAW_TEXT_MIN_PX) {
+          continue;
+        }
+
+        // skip text rendering while zooming
+        if (CANVAS_ZOOMING_TEXT_OPT && this.props.zooming) {
+          continue;
+        }
+
+        const measureText = this._webglTextMeasure;
+        if (!measureText) {
+          continue;
+        }
+
+        const textWidth = toInt(Math.max(width - CANVAS_TEXT_PADDING_PX, 0));
+
+        const label = measure.measure.name;
+        const labelTrimmed = this.props.truncateLabels // TODO: fix
+          ? this._fitTextCached(
+              measure,
+              measureText,
+              label,
+              textWidth - WEBGL_TRUNCATE_BIAS
+            )
+          : label;
+
+        textToRender.push({
+          label: labelTrimmed,
+          x: x + CANVAS_TEXT_PADDING_PX,
+          y: y + WEBGL_TEXT_TOP_PADDING_PX + BAR_HEIGHT / 2 + 4,
+        });
+      }
+      textRender(textToRender);
+    }
+  }
+
   _renderCanvas() {
-    const start = performance.now();
     performance.mark('_renderCanvas');
+    // console.time('_renderCanvas');
     const canvas = this._canvas;
     if (canvas instanceof HTMLCanvasElement) {
       if (CANVAS_USE_WEBGL || this.props.renderer == 'webgl') {
@@ -397,68 +464,7 @@ export default class CanvasRenderer extends React.Component<Props, void> {
           );
         }
 
-        const textRender = this._webglTextRender;
-        const measureText = this._webglTextMeasure;
-        if (textRender && measureText) {
-          const renderableTrace = this.props.renderableTrace;
-          this._renderedShapes.clear();
-          const textToRender = [];
-          for (var index = 0; index < renderableTrace.length; index++) {
-            const measure = renderableTrace[index];
-
-            const layout = getLayout(this.props, measure, 0);
-            const {width, height, x, y, inView} = layout;
-
-            if (!inView) {
-              continue;
-            }
-
-            this._renderedShapes.set(layout, measure);
-
-            // skip text rendering for small measures
-            // text is by far the most expensive part of rendering the trace
-            if (width < CANVAS_DRAW_TEXT_MIN_PX) {
-              continue;
-            }
-
-            // skip text rendering while zooming
-            if (CANVAS_ZOOMING_TEXT_OPT && this.props.zooming) {
-              continue;
-            }
-
-            const measureText = this._webglTextMeasure;
-            if (!measureText) {
-              continue;
-            }
-
-            const textWidth = toInt(
-              Math.max(width - CANVAS_TEXT_PADDING_PX, 0)
-            );
-
-            const label = measure.measure.name;
-            const labelTrimmed = this.props.truncateLabels // TODO: fix
-              ? this._fitTextCached(
-                  measure,
-                  measureText,
-                  label,
-                  textWidth - WEBGL_TRUNCATE_BIAS
-                )
-              : label;
-
-            textToRender.push({
-              label: labelTrimmed,
-              x: x + CANVAS_TEXT_PADDING_PX,
-              y: y + WEBGL_TEXT_TOP_PADDING_PX + BAR_HEIGHT / 2 + 4,
-            });
-
-            // textRender(
-            //  labelTrimmed,
-            //  x + CANVAS_TEXT_PADDING_PX,
-            //  y + WEBGL_TEXT_TOP_PADDING_PX + BAR_HEIGHT / 2 + 4
-            // );
-          }
-          textRender(textToRender);
-        }
+        this._renderTextWebGL();
       } else if (this.props.zooming && CANVAS_CSS_ZOOM) {
         // not finished...
         const zoomRatio = this.props.zoom / this._renderedZoom;
@@ -476,7 +482,7 @@ export default class CanvasRenderer extends React.Component<Props, void> {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
 
-        this._renderedShapes.clear();
+        this._renderedShapes = [];
 
         const {renderableTraceGroups} = this.props;
 
@@ -503,7 +509,8 @@ export default class CanvasRenderer extends React.Component<Props, void> {
     }
 
     performance.measure('_renderCanvas', '_renderCanvas');
-    // console.log('render took', (performance.now() - start).toFixed(1), 'ms');
+
+    // console.timeEnd('_renderCanvas');
   }
 
   _renderCanvasGroup(
@@ -528,7 +535,7 @@ export default class CanvasRenderer extends React.Component<Props, void> {
         continue;
       }
 
-      this._renderedShapes.set(layout, measure);
+      this._renderedShapes.push([layout, measure]);
 
       const hovered = measure === this.props.hovered;
       const selected = measure === this.props.selection;
@@ -538,6 +545,11 @@ export default class CanvasRenderer extends React.Component<Props, void> {
           ? this._utils._getMeasureHoverColorRGB(measure.measure)
           : this._utils._getMeasureColorRGB(measure.measure);
       ctx.fillRect(toInt(x), toInt(y), toInt(width), toInt(height));
+
+      if (!CANVAS_DRAW_TEXT) {
+        // skip text rendering
+        continue;
+      }
 
       // skip text rendering for small measures
       // text is by far the most expensive part of rendering the trace

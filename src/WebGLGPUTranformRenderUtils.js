@@ -88,7 +88,7 @@ function loadShader(gl, type, source) {
 }
 
 const SQUARE_VERTICES = 4; // square
-function initBuffers(gl, state) {
+function initBuffers(gl, state, programInfo) {
   const positions = [];
   const colors = [];
 
@@ -122,7 +122,6 @@ function initBuffers(gl, state) {
       colors.push(...color);
     }
   }
-
   // vertices that will be reused each render
   const positionBuffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
@@ -133,11 +132,13 @@ function initBuffers(gl, state) {
   gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
 
-  return {
+  const buffers = {
     position: positionBuffer,
     positionLength,
     color: colorBuffer,
   };
+
+  return buffers;
 }
 
 function drawScene(gl, programInfo, buffers, state) {
@@ -181,7 +182,6 @@ function drawScene(gl, programInfo, buffers, state) {
     throw new Error('will divide by state.defaultZoom of zero');
   }
   const scale = state.zoom / state.defaultZoom;
-  console.log({offsetX, scale});
   mat4.translate(
     modelViewMatrix, // destination matrix
     modelViewMatrix, // matrix to translate
@@ -198,75 +198,76 @@ function drawScene(gl, programInfo, buffers, state) {
     [scale, 1.0, 1.0]
   );
 
+  // Tell WebGL to use our program when drawing
+  gl.useProgram(programInfo.program);
+
+  // Set the shader uniforms
+
+  gl.uniformMatrix4fv(
+    programInfo.uniformLocations.projectionMatrix,
+    false,
+    projectionMatrix
+  );
+  gl.uniformMatrix4fv(
+    programInfo.uniformLocations.modelViewMatrix,
+    false,
+    modelViewMatrix
+  );
+
+  // Tell WebGL how to pull out the positions from the position
+  // buffer into the vertexPosition attribute
+  {
+    const numComponents = 3;
+    const type = gl.FLOAT;
+    const normalize = false;
+    const stride = 0;
+    const offset = numComponents * SQUARE_VERTICES;
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+    gl.vertexAttribPointer(
+      programInfo.attribLocations.vertexPosition,
+      numComponents,
+      type,
+      normalize,
+      stride,
+      0 //offset
+    );
+    gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+  }
+
+  // Tell WebGL how to pull out the colors from the color buffer
+  // into the vertexColor attribute.
+  {
+    const numComponents = 4;
+    const type = gl.FLOAT;
+    const normalize = false;
+    const stride = 0;
+    const offset = numComponents * SQUARE_VERTICES;
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.color);
+    gl.vertexAttribPointer(
+      programInfo.attribLocations.vertexColor,
+      numComponents,
+      type,
+      normalize,
+      stride,
+      0 //offset
+    );
+    gl.enableVertexAttribArray(programInfo.attribLocations.vertexColor);
+  }
+
   for (
     let primitiveIdx = 0;
     primitiveIdx < buffers.positionLength / 4;
     primitiveIdx++
   ) {
-    // Tell WebGL how to pull out the positions from the position
-    // buffer into the vertexPosition attribute
     {
-      const numComponents = 3;
-      const type = gl.FLOAT;
-      const normalize = false;
-      const stride = 0;
-      const offset = primitiveIdx * numComponents * SQUARE_VERTICES;
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
-      gl.vertexAttribPointer(
-        programInfo.attribLocations.vertexPosition,
-        numComponents,
-        type,
-        normalize,
-        stride,
-        offset
-      );
-      gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
-    }
-
-    // Tell WebGL how to pull out the colors from the color buffer
-    // into the vertexColor attribute.
-    {
-      const numComponents = 4;
-      const type = gl.FLOAT;
-      const normalize = false;
-      const stride = 0;
-      const offset = numComponents * primitiveIdx * SQUARE_VERTICES;
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.color);
-      gl.vertexAttribPointer(
-        programInfo.attribLocations.vertexColor,
-        numComponents,
-        type,
-        normalize,
-        stride,
-        offset
-      );
-      gl.enableVertexAttribArray(programInfo.attribLocations.vertexColor);
-    }
-
-    // Tell WebGL to use our program when drawing
-    gl.useProgram(programInfo.program);
-
-    // Set the shader uniforms
-
-    gl.uniformMatrix4fv(
-      programInfo.uniformLocations.projectionMatrix,
-      false,
-      projectionMatrix
-    );
-    gl.uniformMatrix4fv(
-      programInfo.uniformLocations.modelViewMatrix,
-      false,
-      modelViewMatrix
-    );
-
-    {
-      const offset = 3 * primitiveIdx;
-      gl.drawArrays(gl.TRIANGLE_STRIP, offset, SQUARE_VERTICES);
+      const offset = SQUARE_VERTICES * primitiveIdx;
+      const count = SQUARE_VERTICES;
+      gl.drawArrays(gl.TRIANGLE_STRIP, offset, count);
       drawCalls++;
     }
   }
 
-  console.log({drawCalls});
+  // console.log('drawCalls', drawCalls);
 }
 export function initWebGLRenderer(
   gl: WebGLRenderingContext,
@@ -297,7 +298,7 @@ export function initWebGLRenderer(
   };
   console.log({programInfo});
 
-  const buffers = initBuffers(gl, initState);
+  const buffers = initBuffers(gl, initState, programInfo);
 
   return function rerender(state: WebGLRenderState) {
     drawScene(gl, programInfo, buffers, state);

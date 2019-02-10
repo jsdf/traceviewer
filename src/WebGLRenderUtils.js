@@ -230,7 +230,7 @@ function drawScene(gl, programInfo, buffers, state) {
     }
   }
 
-  console.log({drawCalls});
+  console.log('drawCalls', drawCalls);
 }
 export function initWebGLRenderer(
   gl: WebGLRenderingContext,

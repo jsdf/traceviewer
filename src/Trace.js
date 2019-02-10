@@ -24,7 +24,7 @@ import {
 } from './constants';
 
 const SHOW_CONTROLS = false;
-const USE_PERSISTENT_STATE = false;
+const USE_PERSISTENT_STATE = true;
 
 type Props = {
   groupOrder?: Array<string>,
