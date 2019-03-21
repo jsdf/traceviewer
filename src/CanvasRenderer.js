@@ -71,6 +71,7 @@ const CANVAS_USE_WEBGL = false;
 const WEBGL_TRUNCATE_BIAS = 20;
 const WEBGL_USE_GPU_TRANSFORM = true;
 const CANVAS_RENDER_60FPS = false;
+const CANVAS_FRAMECOUNTER = false;
 
 const toInt = CANVAS_USE_FLOAT_DIMENSIONS ? x => x : Math.floor;
 
@@ -608,9 +609,11 @@ export default class CanvasRenderer extends React.Component<Props, void> {
           width={this.props.viewportWidth}
           height={this.props.viewportHeight}
         />
-        <div style={{position: 'absolute', top: 10, right: 10, fontSize: 64}}>
-          {lastFrameFPS} fps
-        </div>
+        {CANVAS_FRAMECOUNTER && (
+          <div style={{position: 'absolute', top: 10, right: 10, fontSize: 64}}>
+            {lastFrameFPS} fps
+          </div>
+        )}
       </div>
     );
   }
