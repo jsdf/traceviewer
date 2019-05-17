@@ -1,6 +1,5 @@
 // @flow
 import React from 'react';
-import ReactDOM from 'react-dom';
 // $FlowFixMe
 import memoize from 'memoize-one';
 import transformTrace from './calculateTraceLayout';
@@ -138,7 +137,7 @@ export default class Trace extends React.Component<Props, State> {
         break;
       }
       case 'a': {
-        const updated = this.state.center - 0.05 * size / this.state.zoom;
+        const updated = this.state.center - (0.05 * size) / this.state.zoom;
         run(() => {
           this.setState({center: this._clampCenter(updated)});
         });
@@ -152,7 +151,7 @@ export default class Trace extends React.Component<Props, State> {
         break;
       }
       case 'd': {
-        const updated = this.state.center + 0.05 * size / this.state.zoom;
+        const updated = this.state.center + (0.05 * size) / this.state.zoom;
         run(() => {
           this.setState({center: this._clampCenter(updated)});
         });

@@ -23,5 +23,6 @@ yarn-error.log*
 # parcel
 .cache
 dist
+lib
 
-Flamegraph-lib.js
+Flamegraph-umd.js

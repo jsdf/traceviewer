@@ -9,6 +9,7 @@ const fs = require('fs');
 const babelConfig = JSON.parse(fs.readFileSync('./.babelrc', 'utf8'));
 
 babelConfig.plugins.push('@babel/plugin-proposal-object-rest-spread');
+babelConfig.presets.push('@babel/preset-env');
 
 rollup({
   input: './src/SelfContained.js',
@@ -23,7 +24,7 @@ rollup({
 })
   .then(bundle => {
     return bundle.write({
-      file: 'Flamegraph-lib.js',
+      file: 'Flamegraph-umd.js',
       format: 'umd',
       name: 'Flamegraph',
     });
