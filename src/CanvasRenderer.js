@@ -359,7 +359,6 @@ export default class CanvasRenderer extends React.Component<Props, void> {
     let rafID = null;
 
     return () => {
-      return;
       if (rafID == null) {
         rafID = requestAnimationFrame(() => {
           rafID = null;
@@ -437,35 +436,39 @@ export default class CanvasRenderer extends React.Component<Props, void> {
     }
   }
 
+  _renderWebGL(canvas: HTMLCanvasElement) {
+    if (!this._webglRender) {
+      const gl = this._getCanvasGLContext(canvas);
+      this._webglRender = (WEBGL_USE_GPU_TRANSFORM
+        ? initWebGLGPUTransformRenderer
+        : initWebGLRenderer)(gl, this.props);
+    }
+    this._webglRender(this.props);
+
+    if (!this._webglTextRenderInit) {
+      this._webglTextRenderInit = true;
+      const gl = this._getCanvasGLContext(canvas);
+      WebGLTextRenderUtils.init(
+        gl,
+        ({render, measureText}) => {
+          this._webglTextRender = render;
+          this._webglTextMeasure = measureText;
+          this._renderCanvas();
+        },
+        CANVAS_SUPPORT_RETINA ? window.devicePixelRatio : 1
+      );
+    }
+
+    this._renderTextWebGL();
+  }
+
   _renderCanvas() {
     performance.mark('_renderCanvas');
     // console.time('_renderCanvas');
     const canvas = this._canvas;
     if (canvas instanceof HTMLCanvasElement) {
       if (CANVAS_USE_WEBGL || this.props.renderer == 'webgl') {
-        if (!this._webglRender) {
-          const gl = this._getCanvasGLContext(canvas);
-          this._webglRender = (WEBGL_USE_GPU_TRANSFORM
-            ? initWebGLGPUTransformRenderer
-            : initWebGLRenderer)(gl, this.props);
-        }
-        this._webglRender(this.props);
-
-        if (!this._webglTextRenderInit) {
-          this._webglTextRenderInit = true;
-          const gl = this._getCanvasGLContext(canvas);
-          WebGLTextRenderUtils.init(
-            gl,
-            ({render, measureText}) => {
-              this._webglTextRender = render;
-              this._webglTextMeasure = measureText;
-              this._renderCanvas();
-            },
-            CANVAS_SUPPORT_RETINA ? window.devicePixelRatio : 1
-          );
-        }
-
-        this._renderTextWebGL();
+        this._renderWebGL(canvas);
       } else if (this.props.zooming && CANVAS_CSS_ZOOM) {
         // not finished...
         const zoomRatio = this.props.zoom / this._renderedZoom;
