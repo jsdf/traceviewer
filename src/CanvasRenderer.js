@@ -36,7 +36,6 @@ export default class CanvasRenderer extends React.Component<Props, void> {
       <div>
         <canvas
           ref={this.renderer._onCanvas}
-          onWheel={this.renderer._handleWheel}
           onMouseDown={this.renderer._mouseDown}
           onMouseMove={this.renderer._mouseMove}
           onMouseOut={this.renderer._mouseOut}

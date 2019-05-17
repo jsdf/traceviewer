@@ -98,6 +98,10 @@ export class CanvasRendererImpl {
 
   didMount() {
     document.addEventListener('mouseup', this._mouseUp);
+    const canvas = this._canvas;
+    if (canvas instanceof HTMLCanvasElement) {
+      (canvas: any).addEventListener('wheel', this._handleWheel);
+    }
     if (CANVAS_RENDER_60FPS) {
       this.rAFLoop();
     } else {
