@@ -23,10 +23,11 @@ import {
 } from './constants';
 
 const SHOW_CONTROLS = false;
-const USE_PERSISTENT_STATE = true;
+const USE_PERSISTENT_STATE = false;
 
 type Props = {
   groupOrder?: Array<string>,
+  persistView: boolean,
   truncateLabels: boolean,
   trace: Array<Measure>,
   renderer: 'canvas' | 'dom' | 'webgl',
@@ -49,21 +50,6 @@ type State = {
 // const run = fn => requestAnimationFrame(fn);
 const run = fn => fn();
 
-function loadValue(name: string, defaultVal: number) {
-  const item = localStorage.getItem(name);
-  if (USE_PERSISTENT_STATE && item != null) {
-    const parsed = parseFloat(item);
-    if (!Number.isNaN(parsed)) {
-      return parsed;
-    }
-  }
-  return defaultVal;
-}
-
-function storeValue(name: string, val: number) {
-  localStorage.setItem(name, String(val));
-}
-
 export default class Trace extends React.Component<Props, State> {
   _mouseX = 0;
   _mouseY = 0;
@@ -74,13 +60,13 @@ export default class Trace extends React.Component<Props, State> {
     const defaultZoom = 1;
     const defaultCenter =
       startOffset + this.props.viewportWidth / PX_PER_MS / 2;
-    const zoom = loadValue('zoom', defaultZoom);
+    const zoom = this.loadValue('zoom', defaultZoom);
     this.state = {
       dragging: false,
       dragMoved: false,
       selection: null,
       hovered: null,
-      center: loadValue('center', defaultCenter),
+      center: this.loadValue('center', defaultCenter),
       defaultCenter,
       zoom,
       defaultZoom,
@@ -88,11 +74,28 @@ export default class Trace extends React.Component<Props, State> {
     };
   }
 
+  loadValue(name: string, defaultVal: number) {
+    const item = localStorage.getItem(name);
+    if ((this.props.persistView || USE_PERSISTENT_STATE) && item != null) {
+      const parsed = parseFloat(item);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+    return defaultVal;
+  }
+
+  storeValue(name: string, val: number) {
+    if (this.props.persistView || USE_PERSISTENT_STATE) {
+      localStorage.setItem(name, String(val));
+    }
+  }
+
   componentDidMount() {
     document.addEventListener('keypress', this._handleKey);
     window.onbeforeunload = () => {
-      storeValue('center', this.state.center);
-      storeValue('zoom', this.state.zoom);
+      this.storeValue('center', this.state.center);
+      this.storeValue('zoom', this.state.zoom);
     };
   }
 

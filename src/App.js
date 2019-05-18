@@ -50,6 +50,7 @@ class App extends Component<void> {
         <Trace
           truncateLabels={true}
           trace={transformedTracedata}
+          persistView={true}
           viewportWidth={WIDTH}
           viewportHeight={HEIGHT}
           renderer={
