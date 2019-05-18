@@ -11,9 +11,11 @@ const babelConfig = JSON.parse(fs.readFileSync('./.babelrc', 'utf8'));
 babelConfig.plugins.push('@babel/plugin-proposal-object-rest-spread');
 babelConfig.presets.push('@babel/preset-env');
 const pkg = JSON.parse(fs.readFileSync('./package.json'));
-const external = Object.keys(pkg.dependencies || {});
+const external = Object.keys(
+  Object.assign({}, pkg.dependencies, pkg.peerDependencies)
+);
 
-rollup({
+const rollupConfig = {
   input: './src/Trace.js',
   external,
   plugins: [
@@ -24,7 +26,11 @@ rollup({
     resolve(),
     commonjs(),
   ],
-})
+};
+
+console.log(rollupConfig, JSON.stringify(rollupConfig, null, 2));
+
+rollup(rollupConfig)
   .then(bundle => {
     return bundle.write({
       file: 'trace-lib.js',

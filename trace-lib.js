@@ -1790,6 +1790,8 @@ function (_CanvasRendererImpl) {
       for (var index = 0; index < renderableTrace.length; index++) {
         var measure = renderableTrace[index];
         var layout = getLayout(this.props, measure, startY);
+        layout.width = Math.max(layout.width, 1); // at least 1px wide
+
         var width = layout.width,
             height = layout.height,
             x = layout.x,
@@ -2034,28 +2036,12 @@ function (_React$Component) {
   return CanvasRenderer;
 }(React.Component);
 
+var USE_PERSISTENT_STATE = false;
+
 // const run = fn => requestAnimationFrame(fn);
 var run = function run(fn) {
   return fn();
 };
-
-function loadValue(name, defaultVal) {
-  var item = localStorage.getItem(name);
-
-  if (item != null) {
-    var parsed = parseFloat(item);
-
-    if (!Number.isNaN(parsed)) {
-      return parsed;
-    }
-  }
-
-  return defaultVal;
-}
-
-function storeValue(name, val) {
-  localStorage.setItem(name, String(val));
-}
 
 var Trace =
 /*#__PURE__*/
@@ -2197,13 +2183,15 @@ function (_React$Component) {
 
     var defaultZoom = 1;
     var defaultCenter = startOffset + _this.props.viewportWidth / PX_PER_MS / 2;
-    var zoom = loadValue('zoom', defaultZoom);
+
+    var zoom = _this.loadValue('zoom', defaultZoom);
+
     _this.state = {
       dragging: false,
       dragMoved: false,
       selection: null,
       hovered: null,
-      center: loadValue('center', defaultCenter),
+      center: _this.loadValue('center', defaultCenter),
       defaultCenter: defaultCenter,
       zoom: zoom,
       defaultZoom: defaultZoom,
@@ -2213,6 +2201,28 @@ function (_React$Component) {
   }
 
   _createClass(Trace, [{
+    key: "loadValue",
+    value: function loadValue(name, defaultVal) {
+      var item = localStorage.getItem(name);
+
+      if ((this.props.persistView || USE_PERSISTENT_STATE) && item != null) {
+        var parsed = parseFloat(item);
+
+        if (!Number.isNaN(parsed)) {
+          return parsed;
+        }
+      }
+
+      return defaultVal;
+    }
+  }, {
+    key: "storeValue",
+    value: function storeValue(name, val) {
+      if (this.props.persistView || USE_PERSISTENT_STATE) {
+        localStorage.setItem(name, String(val));
+      }
+    }
+  }, {
     key: "componentDidMount",
     value: function componentDidMount() {
       var _this2 = this;
@@ -2220,8 +2230,9 @@ function (_React$Component) {
       document.addEventListener('keypress', this._handleKey);
 
       window.onbeforeunload = function () {
-        storeValue('center', _this2.state.center);
-        storeValue('zoom', _this2.state.zoom);
+        _this2.storeValue('center', _this2.state.center);
+
+        _this2.storeValue('zoom', _this2.state.zoom);
       };
     }
   }, {

@@ -1,20 +1,22 @@
 {
-  "name": "demo",
+  "name": "flamechart",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
     "debounce": "^1.2.0",
     "gl-matrix": "^3.0.0",
-    "memoize-one": "^4.0.2",
-    "react": "^16.6.0",
-    "react-dom": "^16.6.0"
+    "memoize-one": "^4.0.2"
+  },
+  "peerDependencies": {
+    "react": "^16.8.6",
+    "react-dom": "^16.8.6"
   },
   "main": "./trace-lib.js",
   "scripts": {
     "start": "parcel index.html",
     "prod": "rm docs/*; parcel build index.html --out-dir docs/ --public-url /flamechart/",
     "pages": "yarn prod; git add -A; git commit -m 'update website'; git push origin master",
-    "build-lib": "node ./rolluplib.js",
+    "build:lib": "node ./rolluplib.js",
     "build": "babel src -d lib --plugins=@babel/plugin-proposal-object-rest-spread  --presets=@babel/preset-env"
   },
   "devDependencies": {
@@ -24,7 +26,9 @@
     "@babel/preset-flow": "^7.0.0",
     "@babel/preset-react": "^7.0.0",
     "parcel-bundler": "^1.10.3",
-    "prettier": "^1.16.4",
+    "prettier": "^1.17.1",
+    "react": "^16.8.6",
+    "react-dom": "^16.8.6",
     "rollup": "^1.7.0",
     "rollup-plugin-babel": "^4.3.2",
     "rollup-plugin-commonjs": "^9.2.1",
