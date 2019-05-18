@@ -25,6 +25,8 @@ import * as WebGLTextRenderUtils from './WebGLTextRenderUtils';
 import ReactDOM from 'react-dom';
 import type {Element as ReactElement} from 'react';
 
+const MINMAP_BAR_HEIGHT = 2;
+
 export type Props = {
   extents: Extents,
   viewportWidth: number,
@@ -400,9 +402,26 @@ export class Canvas2DRendererImpl extends CanvasRendererImpl {
 
     const {renderableTraceGroups} = this.props;
 
-    const groupOrder = this.props.groupOrder || renderableTraceGroups.keys();
+    const groupOrder =
+      this.props.groupOrder || Array.from(renderableTraceGroups.keys());
 
     let startY = 0;
+
+    // render minimap
+    performance.mark('_renderMinimap');
+    const minimapTop = startY;
+    for (const group of groupOrder) {
+      const groupTrace = renderableTraceGroups.get(group);
+      if (!groupTrace) continue;
+      this._renderCanvasGroupMinimap(groupTrace, ctx, startY);
+      const maxStackIndex = this._getMaxStackIndex(groupTrace);
+      startY += (maxStackIndex + 1) * MINMAP_BAR_HEIGHT;
+    }
+    const minimapBottom = startY;
+    this._renderMinimapShade(ctx, minimapTop, minimapBottom);
+    performance.measure('_renderMinimap', '_renderMinimap');
+
+    // render main trace view
     for (const group of groupOrder) {
       const groupTrace = renderableTraceGroups.get(group);
       if (!groupTrace) continue;
@@ -418,6 +437,68 @@ export class Canvas2DRendererImpl extends CanvasRendererImpl {
     this._renderedZoom = this.props.zoom;
     this._renderedCenter = this.props.center;
     canvas.style.transform = '';
+  }
+
+  _renderMinimapShade(
+    ctx: CanvasRenderingContext2D,
+    minimapTop: number,
+    minimapBottom: number
+  ) {
+    const centerAbs =
+      (this.props.center - this.props.extents.startOffset) /
+      this.props.extents.size;
+    const zoomBoxWidthAbs =
+      this.props.viewportWidth / (this.props.extents.size * this.props.zoom);
+    const zoomBoxStartAbs = centerAbs - zoomBoxWidthAbs / 2;
+    const zoomBoxEndAbs = centerAbs + zoomBoxWidthAbs / 2;
+
+    ctx.fillStyle = 'rgba(200,200,200,0.3)';
+    ctx.fillRect(
+      0,
+      minimapTop,
+      Math.max(zoomBoxStartAbs, 0) * this.props.viewportWidth,
+      minimapBottom - minimapTop
+    );
+    ctx.fillRect(
+      Math.min(zoomBoxEndAbs, 1) * this.props.viewportWidth,
+      minimapTop,
+      this.props.viewportWidth -
+        Math.min(zoomBoxEndAbs, 1) * this.props.viewportWidth,
+      minimapBottom - minimapTop
+    );
+  }
+
+  _renderCanvasGroupMinimap(
+    renderableTrace: RenderableTrace,
+    ctx: CanvasRenderingContext2D,
+    startY: number
+  ) {
+    const first = renderableTrace[0];
+    if (first == null) {
+      return;
+    }
+
+    const {extents} = this.props;
+
+    const currentGroup = first.measure.group;
+
+    for (var index = 0; index < renderableTrace.length; index++) {
+      const measure = renderableTrace[index];
+
+      const width = Math.max(
+        (measure.measure.duration / extents.size) * this.props.viewportWidth,
+        1
+      ); // at least 1px wide
+      const height = MINMAP_BAR_HEIGHT;
+      const x =
+        ((measure.measure.startTime - this.props.extents.startOffset) /
+          extents.size) *
+        this.props.viewportWidth;
+      const y = measure.stackIndex * MINMAP_BAR_HEIGHT + startY;
+
+      ctx.fillStyle = this._utils._getMeasureColorRGB(measure.measure);
+      ctx.fillRect(toInt(x), toInt(y), toInt(width), toInt(height));
+    }
   }
 
   _renderCanvasGroup(
