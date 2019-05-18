@@ -22,6 +22,8 @@ import {initWebGLRenderer} from './WebGLRenderUtils';
 import {initWebGLRenderer as initWebGLGPUTransformRenderer} from './WebGLGPUTranformRenderUtils';
 import type {RenderableText} from './WebGLTextRenderUtils';
 import * as WebGLTextRenderUtils from './WebGLTextRenderUtils';
+import ReactDOM from 'react-dom';
+import type {Element as ReactElement} from 'react';
 
 export type Props = {
   extents: Extents,
@@ -42,6 +44,7 @@ export type Props = {
   renderableTraceGroups: Map<string, RenderableTrace>,
   groupOrder?: Array<string>,
   renderer: 'canvas' | 'webgl',
+  renderTooltip?: Measure => ReactElement<any>,
   onSelectionChange: (selection: ?RenderableMeasure<Measure>) => void,
   onStateChange: HandleStateChangeFn,
 };
@@ -185,9 +188,13 @@ export class CanvasRendererImpl {
       tooltip.style.left = `${tooltipX}px`;
       tooltip.style.top = `${tooltipY}px`;
       if (hovered != null) {
-        tooltip.textContent = `${hovered.measure.duration.toFixed(1)}ms ${
-          hovered.measure.name
-        }`;
+        if (this.props.renderTooltip) {
+          ReactDOM.render(this.props.renderTooltip(hovered.measure), tooltip);
+        } else {
+          tooltip.textContent = `${hovered.measure.duration.toFixed(1)}ms ${
+            hovered.measure.name
+          }`;
+        }
         tooltip.hidden = false;
       } else {
         tooltip.hidden = true;
@@ -429,6 +436,7 @@ export class Canvas2DRendererImpl extends CanvasRendererImpl {
       const measure = renderableTrace[index];
 
       const layout = getLayout(this.props, measure, startY);
+      layout.width = Math.max(layout.width, 1); // at least 1px wide
       const {width, height, x, y, inView} = layout;
 
       if (!inView) {

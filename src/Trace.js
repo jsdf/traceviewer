@@ -10,6 +10,7 @@ import Controls from './Controls';
 import DOMRenderer from './DOMRenderer';
 import CanvasRenderer from './CanvasRenderer';
 import type {HandleStateChangeFn} from './State';
+import type {Element as ReactElement} from 'react';
 
 import {
   PX_PER_MS,
@@ -31,6 +32,7 @@ type Props = {
   truncateLabels: boolean,
   trace: Array<Measure>,
   renderer: 'canvas' | 'dom' | 'webgl',
+  renderTooltip?: Measure => ReactElement<any>,
   viewportWidth: number,
   viewportHeight: number,
 };
@@ -261,6 +263,7 @@ export default class Trace extends React.Component<Props, State> {
               viewportWidth={this.props.viewportWidth}
               viewportHeight={this.props.viewportHeight}
               tooltip={this._tooltip}
+              renderTooltip={this.props.renderTooltip}
               truncateLabels={this.props.truncateLabels}
               renderer={renderer}
               onStateChange={this._handleStateChange}

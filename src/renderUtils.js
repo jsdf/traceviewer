@@ -19,6 +19,7 @@ export type Measure = {
   startTime: number,
   duration: number,
   group?: string,
+  args?: {},
 };
 
 export type Layout = {
