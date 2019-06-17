@@ -2,9 +2,10 @@
 import React, {Component} from 'react';
 import './App.css';
 import tracedata from './exampledata';
+import causaldata from './causaldata';
 import Trace from './Trace';
 
-const FIXED = false;
+const FIXED = true;
 const HEIGHT = FIXED ? 600 : window.innerHeight - 100;
 const WIDTH = window.innerWidth;
 const LARGE = window.location.search.slice(1).includes('large');
@@ -49,16 +50,17 @@ class App extends Component<void> {
       <div className="App">
         <Trace
           truncateLabels={true}
-          trace={transformedTracedata}
           persistView={true}
+          // trace={transformedTracedata}
+          trace={causaldata}
           viewportWidth={WIDTH}
           viewportHeight={HEIGHT}
           renderer={
             window.location.search.slice(1).includes('dom')
               ? 'dom'
               : window.location.search.slice(1).includes('webgl')
-                ? 'webgl'
-                : 'canvas'
+              ? 'webgl'
+              : 'canvas'
           }
         />
       </div>

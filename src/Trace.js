@@ -127,8 +127,13 @@ export default class Trace extends React.Component<Props, State> {
     return Math.max(startOffset, Math.min(endOffset, updated));
   }
 
+  _getMinZoom() {
+    const {size} = this._getExtents();
+    return this.props.viewportWidth / size;
+  }
+
   _clampZoom(updated: number) {
-    return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, updated));
+    return Math.max(this._getMinZoom(), Math.min(MAX_ZOOM, updated));
   }
 
   _handleKey = (event: KeyboardEvent) => {
@@ -260,6 +265,7 @@ export default class Trace extends React.Component<Props, State> {
               groupOrder={this.props.groupOrder}
               {...this.state}
               extents={this._getExtents()}
+              minZoom={this._getMinZoom()}
               viewportWidth={this.props.viewportWidth}
               viewportHeight={this.props.viewportHeight}
               tooltip={this._tooltip}

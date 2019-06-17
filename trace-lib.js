@@ -5,6 +5,7 @@ function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'defau
 var React = _interopDefault(require('react'));
 var memoize = _interopDefault(require('memoize-one'));
 var debounce = _interopDefault(require('debounce'));
+var ReactDOM = _interopDefault(require('react-dom'));
 
 function _classCallCheck(instance, Constructor) {
   if (!(instance instanceof Constructor)) {
@@ -1367,6 +1368,7 @@ function init(gl, onReady, pixelRatio) {
   });
 }
 
+var MINMAP_BAR_HEIGHT = 2;
 var CANVAS_DRAW_TEXT_MIN_PX = 35;
 var CANVAS_TEXT_PADDING_PX = 2;
 var WEBGL_TEXT_TOP_PADDING_PX = -2;
@@ -1444,7 +1446,12 @@ function () {
         tooltip.style.top = "".concat(tooltipY, "px");
 
         if (hovered != null) {
-          tooltip.textContent = "".concat(hovered.measure.duration.toFixed(1), "ms ").concat(hovered.measure.name);
+          if (_this.props.renderTooltip) {
+            ReactDOM.render(_this.props.renderTooltip(hovered.measure), tooltip);
+          } else {
+            tooltip.textContent = "".concat(hovered.measure.duration.toFixed(1), "ms ").concat(hovered.measure.name);
+          }
+
           tooltip.hidden = false;
         } else {
           tooltip.hidden = true;
@@ -1736,8 +1743,11 @@ function (_CanvasRendererImpl) {
 
       this._renderedShapes = [];
       var renderableTraceGroups = this.props.renderableTraceGroups;
-      var groupOrder = this.props.groupOrder || renderableTraceGroups.keys();
-      var startY = 0;
+      var groupOrder = this.props.groupOrder || Array.from(renderableTraceGroups.keys());
+      var startY = 0; // render minimap
+
+      performance.mark('_renderMinimap');
+      var minimapTop = startY;
       var _iteratorNormalCompletion = true;
       var _didIteratorError = false;
       var _iteratorError = undefined;
@@ -1747,15 +1757,12 @@ function (_CanvasRendererImpl) {
           var group = _step.value;
           var groupTrace = renderableTraceGroups.get(group);
           if (!groupTrace) continue;
-          performance.mark('_renderCanvasGroup ' + group);
 
-          this._renderCanvasGroup(groupTrace, ctx, startY);
-
-          performance.measure('_renderCanvasGroup ' + group, '_renderCanvasGroup ' + group);
+          this._renderCanvasGroupMinimap(groupTrace, ctx, startY);
 
           var maxStackIndex = this._getMaxStackIndex(groupTrace);
 
-          startY += (maxStackIndex + 1) * (BAR_HEIGHT + BAR_Y_GUTTER);
+          startY += (maxStackIndex + 1) * MINMAP_BAR_HEIGHT;
         }
       } catch (err) {
         _didIteratorError = true;
@@ -1772,9 +1779,85 @@ function (_CanvasRendererImpl) {
         }
       }
 
+      var minimapBottom = startY;
+
+      this._renderMinimapShade(ctx, minimapTop, minimapBottom);
+
+      performance.measure('_renderMinimap', '_renderMinimap'); // render main trace view
+
+      var _iteratorNormalCompletion2 = true;
+      var _didIteratorError2 = false;
+      var _iteratorError2 = undefined;
+
+      try {
+        for (var _iterator2 = groupOrder[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
+          var _group = _step2.value;
+
+          var _groupTrace = renderableTraceGroups.get(_group);
+
+          if (!_groupTrace) continue;
+          performance.mark('_renderCanvasGroup ' + _group);
+
+          this._renderCanvasGroup(_groupTrace, ctx, startY);
+
+          performance.measure('_renderCanvasGroup ' + _group, '_renderCanvasGroup ' + _group);
+
+          var _maxStackIndex = this._getMaxStackIndex(_groupTrace);
+
+          startY += (_maxStackIndex + 1) * (BAR_HEIGHT + BAR_Y_GUTTER);
+        }
+      } catch (err) {
+        _didIteratorError2 = true;
+        _iteratorError2 = err;
+      } finally {
+        try {
+          if (!_iteratorNormalCompletion2 && _iterator2.return != null) {
+            _iterator2.return();
+          }
+        } finally {
+          if (_didIteratorError2) {
+            throw _iteratorError2;
+          }
+        }
+      }
+
       this._renderedZoom = this.props.zoom;
       this._renderedCenter = this.props.center;
       canvas.style.transform = '';
+    }
+  }, {
+    key: "_renderMinimapShade",
+    value: function _renderMinimapShade(ctx, minimapTop, minimapBottom) {
+      var centerAbs = (this.props.center - this.props.extents.startOffset) / this.props.extents.size;
+      var zoomBoxWidthAbs = this.props.viewportWidth / (this.props.extents.size * this.props.zoom);
+      var zoomBoxStartAbs = centerAbs - zoomBoxWidthAbs / 2;
+      var zoomBoxEndAbs = centerAbs + zoomBoxWidthAbs / 2;
+      ctx.fillStyle = 'rgba(200,200,200,0.3)';
+      ctx.fillRect(0, minimapTop, Math.max(zoomBoxStartAbs, 0) * this.props.viewportWidth, minimapBottom - minimapTop);
+      ctx.fillRect(Math.min(zoomBoxEndAbs, 1) * this.props.viewportWidth, minimapTop, this.props.viewportWidth - Math.min(zoomBoxEndAbs, 1) * this.props.viewportWidth, minimapBottom - minimapTop);
+    }
+  }, {
+    key: "_renderCanvasGroupMinimap",
+    value: function _renderCanvasGroupMinimap(renderableTrace, ctx, startY) {
+      var first = renderableTrace[0];
+
+      if (first == null) {
+        return;
+      }
+
+      var extents = this.props.extents;
+      var currentGroup = first.measure.group;
+
+      for (var index = 0; index < renderableTrace.length; index++) {
+        var measure = renderableTrace[index];
+        var width = Math.max(measure.measure.duration / extents.size * this.props.viewportWidth, 1); // at least 1px wide
+
+        var height = MINMAP_BAR_HEIGHT;
+        var x = (measure.measure.startTime - this.props.extents.startOffset) / extents.size * this.props.viewportWidth;
+        var y = measure.stackIndex * MINMAP_BAR_HEIGHT + startY;
+        ctx.fillStyle = this._utils._getMeasureColorRGB(measure.measure);
+        ctx.fillRect(toInt(x), toInt(y), toInt(width), toInt(height));
+      }
     }
   }, {
     key: "_renderCanvasGroup",
@@ -2321,6 +2404,7 @@ function (_React$Component) {
         viewportWidth: this.props.viewportWidth,
         viewportHeight: this.props.viewportHeight,
         tooltip: this._tooltip,
+        renderTooltip: this.props.renderTooltip,
         truncateLabels: this.props.truncateLabels,
         renderer: renderer,
         onStateChange: this._handleStateChange,
