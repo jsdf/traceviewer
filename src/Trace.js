@@ -40,6 +40,7 @@ type Props = {
 
 type State = {
   center: number,
+  verticalOffset: number,
   defaultCenter: number,
   dragging: boolean,
   dragMoved: boolean,
@@ -70,6 +71,7 @@ export default class Trace extends React.Component<Props, State> {
       selection: null,
       hovered: null,
       center: this.loadValue('center', defaultCenter),
+      verticalOffset: 0,
       defaultCenter,
       zoom,
       defaultZoom,
@@ -305,7 +307,13 @@ export default class Trace extends React.Component<Props, State> {
           )}
           {this._renderTooltip()}
         </div>
-        <pre>
+        <pre
+          style={{
+            borderTop: 'solid 1px #ccc',
+            minHeight: 100,
+            margin: 0,
+          }}
+        >
           {this.state.selection
             ? JSON.stringify(this.state.selection.measure, null, 2)
             : null}

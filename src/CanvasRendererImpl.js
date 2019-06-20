@@ -37,6 +37,7 @@ export type Props = {
   viewportHeight: number,
   center: number,
   defaultCenter: number,
+  verticalOffset: number,
   dragging: boolean,
   dragMoved: boolean,
   hovered: ?RenderableMeasure<Measure>,
@@ -186,11 +187,17 @@ export class CanvasRendererImpl {
     }
 
     if (this.props.dragging) {
-      const updated =
+      const updatedCenter =
         this.props.center -
         (event: $FlowFixMe).movementX / PX_PER_MS / this.props.zoom;
+
+      const updatedVerticalOffset = Math.min(
+        0,
+        this.props.verticalOffset + (event: $FlowFixMe).movementY
+      );
       this.props.onStateChange({
-        center: updated,
+        verticalOffset: updatedVerticalOffset,
+        center: updatedCenter,
         hovered,
         dragMoved: true,
       });
@@ -354,7 +361,11 @@ export class Canvas2DRendererImpl extends CanvasRendererImpl {
       const groupTrace = renderableTraceGroups.get(group);
       if (!groupTrace) continue;
       performance.mark('_renderCanvasGroup ' + group);
-      this._renderCanvasGroup(groupTrace, ctx, startY);
+      this._renderCanvasGroup(
+        groupTrace,
+        ctx,
+        startY + this.props.verticalOffset
+      );
       performance.measure(
         '_renderCanvasGroup ' + group,
         '_renderCanvasGroup ' + group
