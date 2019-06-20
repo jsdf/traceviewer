@@ -152,7 +152,7 @@ export default class Minimap extends React.Component<Props, void> {
     const zoomBoxStartAbs = centerAbs - zoomBoxWidthAbs / 2;
     const zoomBoxEndAbs = centerAbs + zoomBoxWidthAbs / 2;
 
-    ctx.fillStyle = 'rgba(200,200,200,0.3)';
+    ctx.fillStyle = 'rgba(200,200,200,0.4)';
     ctx.fillRect(
       0,
       minimapTop,
