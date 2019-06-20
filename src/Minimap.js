@@ -1,25 +1,63 @@
 // @flow
 import React from 'react';
 
-const CANVAS_FRAMECOUNTER = false;
-const CANVAS_USE_WEBGL = false;
+import {PX_PER_MS} from './constants';
+// $FlowFixMe
+import memoize from 'memoize-one';
+import {getLayout, UtilsWithCache} from './renderUtils';
 
-type Props = {viewportWidth: number};
+import {CANVAS_OPAQUE, CANVAS_SUPPORT_RETINA} from './canvasConstants';
+import type {RenderableTrace, Measure, Extents, Layout} from './renderUtils';
+import type {RenderableMeasure} from './calculateTraceLayout';
+import type {HandleStateChangeFn} from './State';
+import {
+  configureRetinaCanvas,
+  getCanvasMousePos,
+  CanvasWheelHandler,
+} from './canvasUtils';
+import type {MouseEventWithTarget} from './canvasUtils';
+
+const MINMAP_BAR_HEIGHT = 2;
+
+type Props = {
+  viewportWidth: number,
+
+  extents: Extents,
+  viewportWidth: number,
+  viewportHeight: number,
+  center: number,
+  defaultCenter: number,
+  dragging: boolean,
+  dragMoved: boolean,
+  hovered: ?RenderableMeasure<Measure>,
+  selection: ?RenderableMeasure<Measure>,
+  zoom: number,
+  defaultZoom: number,
+  zooming: boolean,
+  minZoom: number,
+  renderableTrace: RenderableTrace,
+  renderableTraceGroups: Map<string, RenderableTrace>,
+  groupOrder?: Array<string>,
+  onStateChange: HandleStateChangeFn,
+};
 
 export default class Minimap extends React.Component<Props, void> {
   _canvas: ?Node = null;
   _mouseX = 0;
   _mouseY = 0;
+  _isMouseDown = false;
   _onCanvas = (node: ?Node) => {
     this._canvas = node;
   };
+  _utils = new UtilsWithCache();
 
   componentDidMount() {
-    // document.addEventListener('mouseup', this._mouseUp);
+    document.addEventListener('mouseup', this._mouseUp);
     const canvas = this._canvas;
-    // if (canvas instanceof HTMLCanvasElement) {
-    //   (canvas: any).addEventListener('wheel', this._handleWheel);
-    // }
+
+    if (canvas instanceof HTMLCanvasElement) {
+      (canvas: any).addEventListener('wheel', this._handleWheel);
+    }
     this._renderCanvas();
   }
 
@@ -27,26 +65,10 @@ export default class Minimap extends React.Component<Props, void> {
     this._renderCanvas();
   }
 
-  _configureRetinaCanvas(canvas: HTMLCanvasElement) {
-    // hidpi canvas: https://www.html5rocks.com/en/tutorials/canvas/hidpi/
-
-    // Get the device pixel ratio, falling back to 1.
-    var dpr = window.devicePixelRatio || 1;
-    // Get the size of the canvas in CSS pixels.
-    var rect = canvas.getBoundingClientRect();
-    // Give the canvas pixel dimensions of their CSS
-    // size * the device pixel ratio.
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    canvas.style.width = `${rect.width}px`;
-    canvas.style.height = `${rect.height}px`;
-    return dpr;
-  }
-
   _getCanvasContext = memoize((canvas: HTMLCanvasElement) => {
     var ctx = canvas.getContext('2d', CANVAS_OPAQUE ? {alpha: false} : {});
     if (CANVAS_SUPPORT_RETINA) {
-      const dpr = this._configureRetinaCanvas(canvas);
+      const dpr = configureRetinaCanvas(canvas);
       // Scale all drawing operations by the dpr, so you
       // don't have to worry about the difference.
       ctx.scale(dpr, dpr);
@@ -63,8 +85,6 @@ export default class Minimap extends React.Component<Props, void> {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      this._renderedShapes = [];
-
       const {renderableTraceGroups} = this.props;
 
       const groupOrder =
@@ -77,7 +97,7 @@ export default class Minimap extends React.Component<Props, void> {
         const groupTrace = renderableTraceGroups.get(group);
         if (!groupTrace) continue;
         this._renderCanvasGroupMinimap(groupTrace, ctx, startY);
-        const maxStackIndex = this._getMaxStackIndex(groupTrace);
+        const maxStackIndex = this._utils._getMaxStackIndex(groupTrace);
         startY += (maxStackIndex + 1) * MINMAP_BAR_HEIGHT;
       }
       const minimapBottom = startY;
@@ -115,7 +135,7 @@ export default class Minimap extends React.Component<Props, void> {
       const y = measure.stackIndex * MINMAP_BAR_HEIGHT + startY;
 
       ctx.fillStyle = this._utils._getMeasureColorRGB(measure.measure);
-      ctx.fillRect(toInt(x), toInt(y), toInt(width), toInt(height));
+      ctx.fillRect(x, y, width, height);
     }
   }
 
@@ -148,16 +168,78 @@ export default class Minimap extends React.Component<Props, void> {
     );
   }
 
+  _canvasWheelHandler = new CanvasWheelHandler();
+
+  _handleWheel = (event: SyntheticWheelEvent<HTMLCanvasElement>) => {
+    this._canvasWheelHandler._handleWheel(event, this._canvas, this.props);
+  };
+
+  _mouseMove = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    const {canvasMouseX, canvasMouseY} = this._getCanvasMousePos(
+      (event: $FlowFixMe)
+    );
+
+    this._mouseX = canvasMouseX;
+    this._mouseY = canvasMouseY;
+
+    if (this._isMouseDown) {
+      this._setCenterFromMousePos(event);
+      // const updated =
+      //   this.props.center -
+      //   (event: $FlowFixMe).movementX / PX_PER_MS / this.props.zoom;
+      // this.props.onStateChange({
+      //   center: updated,
+      // });
+    }
+  };
+
+  _mouseDown = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    this._isMouseDown = true;
+  };
+
+  _mouseOut = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    this._isMouseDown = false;
+  };
+
+  _mouseUp = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    this._isMouseDown = false;
+  };
+
+  _setCenterFromMousePos(event: SyntheticMouseEvent<HTMLCanvasElement>) {
+    const {canvasMouseX, canvasMouseY} = this._getCanvasMousePos(
+      (event: $FlowFixMe)
+    );
+    const updated =
+      (canvasMouseX / this.props.viewportWidth) * this.props.extents.size +
+      this.props.extents.startOffset;
+
+    this.props.onStateChange({
+      center: updated,
+    });
+  }
+
+  _click = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    this._setCenterFromMousePos(event);
+  };
+
+  _getCanvasMousePos(event: MouseEventWithTarget) {
+    return getCanvasMousePos(event, this._canvas);
+  }
+
   render() {
     return (
       <div>
         <canvas
           ref={this._onCanvas}
-          // onMouseDown={this._mouseDown}
-          // onMouseMove={this._mouseMove}
-          // onMouseOut={this._mouseOut}
+          onMouseDown={this._mouseDown}
+          onMouseMove={this._mouseMove}
+          onMouseOut={this._mouseOut}
+          onClick={this._click}
           width={this.props.viewportWidth}
-          height={this.props.viewportHeight}
+          height={
+            MINMAP_BAR_HEIGHT *
+            this._utils._getMaxStackIndex(this.props.renderableTrace)
+          }
         />
       </div>
     );

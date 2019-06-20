@@ -24,8 +24,12 @@ import type {RenderableText} from './WebGLTextRenderUtils';
 import * as WebGLTextRenderUtils from './WebGLTextRenderUtils';
 import ReactDOM from 'react-dom';
 import type {Element as ReactElement} from 'react';
-
-const MINMAP_BAR_HEIGHT = 2;
+import {
+  configureRetinaCanvas,
+  getCanvasMousePos,
+  CanvasWheelHandler,
+} from './canvasUtils';
+import type {MouseEventWithTarget} from './canvasUtils';
 
 export type Props = {
   extents: Extents,
@@ -52,28 +56,19 @@ export type Props = {
   onStateChange: HandleStateChangeFn,
 };
 
-type MouseEventWithTarget = {
-  currentTarget: {
-    getBoundingClientRect: () => {
-      left: number,
-      top: number,
-    },
-  },
-  clientX: number,
-  clientY: number,
-};
-
-const CANVAS_DRAW_TEXT = true;
-const CANVAS_DRAW_TEXT_MIN_PX = 35;
-const CANVAS_USE_FLOAT_DIMENSIONS = false;
-const CANVAS_OPAQUE = true;
-const CANVAS_SUPPORT_RETINA = true;
-const CANVAS_ZOOMING_TEXT_OPT = false;
-const CANVAS_TEXT_PADDING_PX = 2;
-const WEBGL_TEXT_TOP_PADDING_PX = -2;
-const WEBGL_TRUNCATE_BIAS = 20;
-const WEBGL_USE_GPU_TRANSFORM = true;
-const CANVAS_RENDER_60FPS = false;
+import {
+  CANVAS_DRAW_TEXT,
+  CANVAS_DRAW_TEXT_MIN_PX,
+  CANVAS_USE_FLOAT_DIMENSIONS,
+  CANVAS_OPAQUE,
+  CANVAS_SUPPORT_RETINA,
+  CANVAS_ZOOMING_TEXT_OPT,
+  CANVAS_TEXT_PADDING_PX,
+  WEBGL_TEXT_TOP_PADDING_PX,
+  WEBGL_TRUNCATE_BIAS,
+  WEBGL_USE_GPU_TRANSFORM,
+  CANVAS_RENDER_60FPS,
+} from './canvasConstants';
 
 const toInt = CANVAS_USE_FLOAT_DIMENSIONS ? x => x : Math.floor;
 
@@ -128,22 +123,8 @@ export class CanvasRendererImpl {
     });
   };
 
-  // TODO: remove this duplication?
-  _clampZoom(updated: number) {
-    return Math.max(this.props.minZoom, Math.min(MAX_ZOOM, updated));
-  }
-
   _getCanvasMousePos(event: MouseEventWithTarget) {
-    // const rect = event.currentTarget.getBoundingClientRect();
-    const canvas = this._canvas;
-    const rect =
-      canvas instanceof HTMLCanvasElement
-        ? canvas.getBoundingClientRect()
-        : {left: 0, top: 0};
-    const canvasMouseX = event.clientX - rect.left;
-    const canvasMouseY = event.clientY - rect.top;
-
-    return {canvasMouseX, canvasMouseY};
+    return getCanvasMousePos(event, this._canvas);
   }
 
   _getIntersectingMeasure(event: MouseEventWithTarget) {
@@ -236,34 +217,10 @@ export class CanvasRendererImpl {
     });
   };
 
-  _endWheel = debounce(() => {
-    this.props.onStateChange({
-      zooming: false,
-    });
-  }, 100);
+  _canvasWheelHandler = new CanvasWheelHandler();
 
   _handleWheel = (event: SyntheticWheelEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    // zoom centered on mouse
-    const {canvasMouseX} = this._getCanvasMousePos((event: $FlowFixMe));
-    const mouseOffsetFromCenter = canvasMouseX - this.props.viewportWidth / 2;
-    const updatedZoom = this.props.zoom * (1 + 0.005 * -event.deltaY);
-    const updatedCenter =
-      this.props.center +
-      // offset to time space before zoom
-      mouseOffsetFromCenter / PX_PER_MS / this.props.zoom -
-      // offset to time space after zoom
-      mouseOffsetFromCenter / PX_PER_MS / updatedZoom;
-
-    if (this._clampZoom(updatedZoom) !== this.props.zoom) {
-      this.props.onStateChange({
-        zooming: true,
-        zoom: updatedZoom,
-        center: updatedCenter,
-      });
-      this._endWheel();
-    }
+    this._canvasWheelHandler._handleWheel(event, this._canvas, this.props);
   };
 
   _getCanvasContext = memoize((canvas: HTMLCanvasElement) => {

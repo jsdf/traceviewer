@@ -11,6 +11,7 @@ import DOMRenderer from './DOMRenderer';
 import CanvasRenderer from './CanvasRenderer';
 import type {HandleStateChangeFn} from './State';
 import type {Element as ReactElement} from 'react';
+import Minimap from './Minimap';
 
 import {
   PX_PER_MS,
@@ -252,6 +253,22 @@ export default class Trace extends React.Component<Props, State> {
             onChange={this._handleStateChange}
           />
         )}
+        <Minimap
+          renderableTrace={renderableTrace}
+          renderableTraceGroups={renderableTraceGroups}
+          groupOrder={this.props.groupOrder}
+          {...this.state}
+          extents={this._getExtents()}
+          minZoom={this._getMinZoom()}
+          viewportWidth={this.props.viewportWidth}
+          viewportHeight={this.props.viewportHeight}
+          tooltip={this._tooltip}
+          renderTooltip={this.props.renderTooltip}
+          truncateLabels={this.props.truncateLabels}
+          renderer={renderer}
+          onStateChange={this._handleStateChange}
+          onSelectionChange={this._handleSelectionChange}
+        />
         <div
           style={{
             cursor: this.state.dragging ? 'grabbing' : 'grab',
