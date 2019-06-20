@@ -1,0 +1,11 @@
+export const CANVAS_DRAW_TEXT = true;
+export const CANVAS_DRAW_TEXT_MIN_PX = 35;
+export const CANVAS_USE_FLOAT_DIMENSIONS = false;
+export const CANVAS_OPAQUE = true;
+export const CANVAS_SUPPORT_RETINA = true;
+export const CANVAS_ZOOMING_TEXT_OPT = false;
+export const CANVAS_TEXT_PADDING_PX = 2;
+export const WEBGL_TEXT_TOP_PADDING_PX = -2;
+export const WEBGL_TRUNCATE_BIAS = 20;
+export const WEBGL_USE_GPU_TRANSFORM = true;
+export const CANVAS_RENDER_60FPS = false;

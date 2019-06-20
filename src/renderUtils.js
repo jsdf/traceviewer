@@ -40,9 +40,9 @@ export type RenderableTrace = Array<RenderableMeasure<Measure>>;
 
 function getRandomColor(): Color {
   return [
-    Math.floor(Math.random() * 256),
-    Math.floor(Math.random() * 256),
-    Math.floor(Math.random() * 256),
+    Math.floor((1 - Math.random() * 0.5) * 256),
+    Math.floor((1 - Math.random() * 0.7) * 256),
+    Math.floor((1 - Math.random() * 0.3) * 256),
   ];
 }
 
@@ -92,4 +92,8 @@ export class UtilsWithCache {
       255
     )},${Math.min(color[2] + 20, 255)})`;
   });
+
+  _getMaxStackIndex: RenderableTrace => number = memoizeWeak(renderableTrace =>
+    renderableTrace.reduce((acc, item) => Math.max(item.stackIndex, acc), 0)
+  );
 }

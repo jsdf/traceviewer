@@ -24,8 +24,12 @@ import type {RenderableText} from './WebGLTextRenderUtils';
 import * as WebGLTextRenderUtils from './WebGLTextRenderUtils';
 import ReactDOM from 'react-dom';
 import type {Element as ReactElement} from 'react';
-
-const MINMAP_BAR_HEIGHT = 2;
+import {
+  configureRetinaCanvas,
+  getCanvasMousePos,
+  CanvasWheelHandler,
+} from './canvasUtils';
+import type {MouseEventWithTarget} from './canvasUtils';
 
 export type Props = {
   extents: Extents,
@@ -33,6 +37,7 @@ export type Props = {
   viewportHeight: number,
   center: number,
   defaultCenter: number,
+  verticalOffset: number,
   dragging: boolean,
   dragMoved: boolean,
   hovered: ?RenderableMeasure<Measure>,
@@ -40,6 +45,7 @@ export type Props = {
   zoom: number,
   defaultZoom: number,
   zooming: boolean,
+  minZoom: number,
   tooltip: ?Node,
   truncateLabels?: boolean,
   renderableTrace: RenderableTrace,
@@ -51,28 +57,19 @@ export type Props = {
   onStateChange: HandleStateChangeFn,
 };
 
-type MouseEventWithTarget = {
-  currentTarget: {
-    getBoundingClientRect: () => {
-      left: number,
-      top: number,
-    },
-  },
-  clientX: number,
-  clientY: number,
-};
-
-const CANVAS_DRAW_TEXT = true;
-const CANVAS_DRAW_TEXT_MIN_PX = 35;
-const CANVAS_USE_FLOAT_DIMENSIONS = false;
-const CANVAS_OPAQUE = true;
-const CANVAS_SUPPORT_RETINA = true;
-const CANVAS_ZOOMING_TEXT_OPT = false;
-const CANVAS_TEXT_PADDING_PX = 2;
-const WEBGL_TEXT_TOP_PADDING_PX = -2;
-const WEBGL_TRUNCATE_BIAS = 20;
-const WEBGL_USE_GPU_TRANSFORM = true;
-const CANVAS_RENDER_60FPS = false;
+import {
+  CANVAS_DRAW_TEXT,
+  CANVAS_DRAW_TEXT_MIN_PX,
+  CANVAS_USE_FLOAT_DIMENSIONS,
+  CANVAS_OPAQUE,
+  CANVAS_SUPPORT_RETINA,
+  CANVAS_ZOOMING_TEXT_OPT,
+  CANVAS_TEXT_PADDING_PX,
+  WEBGL_TEXT_TOP_PADDING_PX,
+  WEBGL_TRUNCATE_BIAS,
+  WEBGL_USE_GPU_TRANSFORM,
+  CANVAS_RENDER_60FPS,
+} from './canvasConstants';
 
 const toInt = CANVAS_USE_FLOAT_DIMENSIONS ? x => x : Math.floor;
 
@@ -127,22 +124,8 @@ export class CanvasRendererImpl {
     });
   };
 
-  // TODO: remove this duplication?
-  _clampZoom(updated: number) {
-    return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, updated));
-  }
-
   _getCanvasMousePos(event: MouseEventWithTarget) {
-    // const rect = event.currentTarget.getBoundingClientRect();
-    const canvas = this._canvas;
-    const rect =
-      canvas instanceof HTMLCanvasElement
-        ? canvas.getBoundingClientRect()
-        : {left: 0, top: 0};
-    const canvasMouseX = event.clientX - rect.left;
-    const canvasMouseY = event.clientY - rect.top;
-
-    return {canvasMouseX, canvasMouseY};
+    return getCanvasMousePos(event, this._canvas);
   }
 
   _getIntersectingMeasure(event: MouseEventWithTarget) {
@@ -204,11 +187,17 @@ export class CanvasRendererImpl {
     }
 
     if (this.props.dragging) {
-      const updated =
+      const updatedCenter =
         this.props.center -
         (event: $FlowFixMe).movementX / PX_PER_MS / this.props.zoom;
+
+      const updatedVerticalOffset = Math.min(
+        0,
+        this.props.verticalOffset + (event: $FlowFixMe).movementY
+      );
       this.props.onStateChange({
-        center: updated,
+        verticalOffset: updatedVerticalOffset,
+        center: updatedCenter,
         hovered,
         dragMoved: true,
       });
@@ -235,56 +224,16 @@ export class CanvasRendererImpl {
     });
   };
 
-  _endWheel = debounce(() => {
-    this.props.onStateChange({
-      zooming: false,
-    });
-  }, 100);
+  _canvasWheelHandler = new CanvasWheelHandler();
 
   _handleWheel = (event: SyntheticWheelEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    // zoom centered on mouse
-    const {canvasMouseX} = this._getCanvasMousePos((event: $FlowFixMe));
-    const mouseOffsetFromCenter = canvasMouseX - this.props.viewportWidth / 2;
-    const updatedZoom = this.props.zoom * (1 + 0.005 * -event.deltaY);
-    const updatedCenter =
-      this.props.center +
-      // offset to time space before zoom
-      mouseOffsetFromCenter / PX_PER_MS / this.props.zoom -
-      // offset to time space after zoom
-      mouseOffsetFromCenter / PX_PER_MS / updatedZoom;
-
-    if (this._clampZoom(updatedZoom) !== this.props.zoom) {
-      this.props.onStateChange({
-        zooming: true,
-        zoom: updatedZoom,
-        center: updatedCenter,
-      });
-      this._endWheel();
-    }
+    this._canvasWheelHandler._handleWheel(event, this._canvas, this.props);
   };
-
-  _configureRetinaCanvas(canvas: HTMLCanvasElement) {
-    // hidpi canvas: https://www.html5rocks.com/en/tutorials/canvas/hidpi/
-
-    // Get the device pixel ratio, falling back to 1.
-    var dpr = window.devicePixelRatio || 1;
-    // Get the size of the canvas in CSS pixels.
-    var rect = canvas.getBoundingClientRect();
-    // Give the canvas pixel dimensions of their CSS
-    // size * the device pixel ratio.
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    canvas.style.width = `${rect.width}px`;
-    canvas.style.height = `${rect.height}px`;
-    return dpr;
-  }
 
   _getCanvasContext = memoize((canvas: HTMLCanvasElement) => {
     var ctx = canvas.getContext('2d', CANVAS_OPAQUE ? {alpha: false} : {});
     if (CANVAS_SUPPORT_RETINA) {
-      const dpr = this._configureRetinaCanvas(canvas);
+      const dpr = configureRetinaCanvas(canvas);
       // Scale all drawing operations by the dpr, so you
       // don't have to worry about the difference.
       ctx.scale(dpr, dpr);
@@ -407,26 +356,16 @@ export class Canvas2DRendererImpl extends CanvasRendererImpl {
 
     let startY = 0;
 
-    // render minimap
-    performance.mark('_renderMinimap');
-    const minimapTop = startY;
-    for (const group of groupOrder) {
-      const groupTrace = renderableTraceGroups.get(group);
-      if (!groupTrace) continue;
-      this._renderCanvasGroupMinimap(groupTrace, ctx, startY);
-      const maxStackIndex = this._getMaxStackIndex(groupTrace);
-      startY += (maxStackIndex + 1) * MINMAP_BAR_HEIGHT;
-    }
-    const minimapBottom = startY;
-    this._renderMinimapShade(ctx, minimapTop, minimapBottom);
-    performance.measure('_renderMinimap', '_renderMinimap');
-
     // render main trace view
     for (const group of groupOrder) {
       const groupTrace = renderableTraceGroups.get(group);
       if (!groupTrace) continue;
       performance.mark('_renderCanvasGroup ' + group);
-      this._renderCanvasGroup(groupTrace, ctx, startY);
+      this._renderCanvasGroup(
+        groupTrace,
+        ctx,
+        startY + this.props.verticalOffset
+      );
       performance.measure(
         '_renderCanvasGroup ' + group,
         '_renderCanvasGroup ' + group
@@ -437,68 +376,6 @@ export class Canvas2DRendererImpl extends CanvasRendererImpl {
     this._renderedZoom = this.props.zoom;
     this._renderedCenter = this.props.center;
     canvas.style.transform = '';
-  }
-
-  _renderMinimapShade(
-    ctx: CanvasRenderingContext2D,
-    minimapTop: number,
-    minimapBottom: number
-  ) {
-    const centerAbs =
-      (this.props.center - this.props.extents.startOffset) /
-      this.props.extents.size;
-    const zoomBoxWidthAbs =
-      this.props.viewportWidth / (this.props.extents.size * this.props.zoom);
-    const zoomBoxStartAbs = centerAbs - zoomBoxWidthAbs / 2;
-    const zoomBoxEndAbs = centerAbs + zoomBoxWidthAbs / 2;
-
-    ctx.fillStyle = 'rgba(200,200,200,0.3)';
-    ctx.fillRect(
-      0,
-      minimapTop,
-      Math.max(zoomBoxStartAbs, 0) * this.props.viewportWidth,
-      minimapBottom - minimapTop
-    );
-    ctx.fillRect(
-      Math.min(zoomBoxEndAbs, 1) * this.props.viewportWidth,
-      minimapTop,
-      this.props.viewportWidth -
-        Math.min(zoomBoxEndAbs, 1) * this.props.viewportWidth,
-      minimapBottom - minimapTop
-    );
-  }
-
-  _renderCanvasGroupMinimap(
-    renderableTrace: RenderableTrace,
-    ctx: CanvasRenderingContext2D,
-    startY: number
-  ) {
-    const first = renderableTrace[0];
-    if (first == null) {
-      return;
-    }
-
-    const {extents} = this.props;
-
-    const currentGroup = first.measure.group;
-
-    for (var index = 0; index < renderableTrace.length; index++) {
-      const measure = renderableTrace[index];
-
-      const width = Math.max(
-        (measure.measure.duration / extents.size) * this.props.viewportWidth,
-        1
-      ); // at least 1px wide
-      const height = MINMAP_BAR_HEIGHT;
-      const x =
-        ((measure.measure.startTime - this.props.extents.startOffset) /
-          extents.size) *
-        this.props.viewportWidth;
-      const y = measure.stackIndex * MINMAP_BAR_HEIGHT + startY;
-
-      ctx.fillStyle = this._utils._getMeasureColorRGB(measure.measure);
-      ctx.fillRect(toInt(x), toInt(y), toInt(width), toInt(height));
-    }
   }
 
   _renderCanvasGroup(
@@ -590,7 +467,7 @@ export class Canvas2DRendererImpl extends CanvasRendererImpl {
 export class CanvasWebGlRendererImpl extends CanvasRendererImpl {
   _getCanvasGLContext = memoize((canvas: HTMLCanvasElement) => {
     if (CANVAS_SUPPORT_RETINA) {
-      this._configureRetinaCanvas(canvas);
+      configureRetinaCanvas(canvas);
     }
     const gl = canvas.getContext('webgl');
     if (!gl) {

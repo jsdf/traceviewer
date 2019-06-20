@@ -11,6 +11,7 @@ import DOMRenderer from './DOMRenderer';
 import CanvasRenderer from './CanvasRenderer';
 import type {HandleStateChangeFn} from './State';
 import type {Element as ReactElement} from 'react';
+import Minimap from './Minimap';
 
 import {
   PX_PER_MS,
@@ -39,6 +40,7 @@ type Props = {
 
 type State = {
   center: number,
+  verticalOffset: number,
   defaultCenter: number,
   dragging: boolean,
   dragMoved: boolean,
@@ -69,6 +71,7 @@ export default class Trace extends React.Component<Props, State> {
       selection: null,
       hovered: null,
       center: this.loadValue('center', defaultCenter),
+      verticalOffset: 0,
       defaultCenter,
       zoom,
       defaultZoom,
@@ -127,8 +130,13 @@ export default class Trace extends React.Component<Props, State> {
     return Math.max(startOffset, Math.min(endOffset, updated));
   }
 
+  _getMinZoom() {
+    const {size} = this._getExtents();
+    return this.props.viewportWidth / size;
+  }
+
   _clampZoom(updated: number) {
-    return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, updated));
+    return Math.max(this._getMinZoom(), Math.min(MAX_ZOOM, updated));
   }
 
   _handleKey = (event: KeyboardEvent) => {
@@ -247,6 +255,22 @@ export default class Trace extends React.Component<Props, State> {
             onChange={this._handleStateChange}
           />
         )}
+        <Minimap
+          renderableTrace={renderableTrace}
+          renderableTraceGroups={renderableTraceGroups}
+          groupOrder={this.props.groupOrder}
+          {...this.state}
+          extents={this._getExtents()}
+          minZoom={this._getMinZoom()}
+          viewportWidth={this.props.viewportWidth}
+          viewportHeight={this.props.viewportHeight}
+          tooltip={this._tooltip}
+          renderTooltip={this.props.renderTooltip}
+          truncateLabels={this.props.truncateLabels}
+          renderer={renderer}
+          onStateChange={this._handleStateChange}
+          onSelectionChange={this._handleSelectionChange}
+        />
         <div
           style={{
             cursor: this.state.dragging ? 'grabbing' : 'grab',
@@ -260,6 +284,7 @@ export default class Trace extends React.Component<Props, State> {
               groupOrder={this.props.groupOrder}
               {...this.state}
               extents={this._getExtents()}
+              minZoom={this._getMinZoom()}
               viewportWidth={this.props.viewportWidth}
               viewportHeight={this.props.viewportHeight}
               tooltip={this._tooltip}
@@ -282,7 +307,13 @@ export default class Trace extends React.Component<Props, State> {
           )}
           {this._renderTooltip()}
         </div>
-        <pre>
+        <pre
+          style={{
+            borderTop: 'solid 1px #ccc',
+            minHeight: 100,
+            margin: 0,
+          }}
+        >
           {this.state.selection
             ? JSON.stringify(this.state.selection.measure, null, 2)
             : null}
