@@ -14,14 +14,14 @@
   "main": "./trace-lib.js",
   "scripts": {
     "start": "parcel index.html",
-    "prod": "rm docs/*; parcel build index.html --out-dir docs/ --public-url /traceviewer/",
+    "prod": "rm -rf docs/*; parcel build index.html --out-dir docs/ --public-url /traceviewer/",
     "pages": "yarn prod; git add -A; git commit -m 'update website'; git push origin master",
     "build:lib": "node ./rolluplib.js",
     "build": "babel src -d lib --plugins=@babel/plugin-proposal-object-rest-spread  --presets=@babel/preset-env"
   },
   "devDependencies": {
     "@babel/cli": "^7.4.4",
-    "@babel/core": "^7.0.0-0",
+    "@babel/core": "^7.12.0",
     "@babel/plugin-proposal-class-properties": "^7.1.0",
     "@babel/preset-flow": "^7.0.0",
     "@babel/preset-react": "^7.0.0",
