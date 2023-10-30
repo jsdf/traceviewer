@@ -7,7 +7,7 @@
       content="width=device-width, initial-scale=1, shrink-to-fit=no"
     />
     <meta name="theme-color" content="#000000" />
-    <title>Flamechart</title>
+    <title>Traceviewer</title>
   </head>
   <body>
     <noscript>
@@ -16,7 +16,7 @@
     <div id="root"></div>
     <script type="text/javascript" src="./Flamegraph-umd.js"></script>
     <script type="text/javascript">
-      import('./src/exampledata.js').then(data => {
+      import('./src/exampledata.js').then((data) => {
         Flamegraph(
           {
             trace: data.default,
